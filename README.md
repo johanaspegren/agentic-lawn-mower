@@ -13,8 +13,7 @@ Working end-to-end against the live mower:
 - UDP discovery (`Search` → `SearchAck`)
 - Replay of captured packets over TCP
 - Live one-shot commands: `initiate-remote`, `forward`, `reverse`, `left`,
-  `right`, `auto`, `home`, `blade`, `stop`, `poll`, `state`, `version`,
-  `set-time`
+  `right`, `auto`, `home`, `blade`, `stop`, `poll`
 - Synthesize new 0x69-family commands by param byte:
   `python mower.py param <ip> 0x09`
 - Interactive REPL with a STOP failsafe on every exit path:
@@ -39,44 +38,94 @@ Not yet mapped: anything `0x09`+ (likely either unused or maintenance-only).
 
 ## Usage
 
+### CLI
+
 ```bash
-# Sanity check
 ping -c 3 192.168.68.108
 
 # Find the mower on the LAN (broadcast Search)
-python mower.py discover
+python -m mower discover
 
 # Single commands
-python mower.py initiate-remote 192.168.68.108
-python mower.py forward 192.168.68.108
-python mower.py stop 192.168.68.108
-python mower.py home 192.168.68.108
+python -m mower initiate-remote 192.168.68.108
+python -m mower forward 192.168.68.108
+python -m mower stop 192.168.68.108
+python -m mower home 192.168.68.108
+
+# Set the mower's clock
+python -m mower set-time 192.168.68.108
+python -m mower set-time 192.168.68.108 -d 2026-06-29T23:00
 
 # Interactive shell — single TCP socket, instant response,
 # every exit path (q / EOF / Ctrl-C / kill / crash) sends STOP first
-python mower.py repl 192.168.68.108
+python -m mower repl 192.168.68.108
 
 # Try an unknown param byte against the 0x69 command family
-python mower.py param 192.168.68.108 0x0a
+python -m mower param 192.168.68.108 0x0a
 
 # Replay any captured PCAPDroid hex dump
-python mower.py replay 192.168.68.108 "logs from phone/connect to klippis 18 31 37.txt"
+python -m mower replay 192.168.68.108 "logs from phone/old/PCAPdroid_28_Jun_19_35.txt"
 
 # Decode a raw hex blob
-python mower.py decode "30 68 00 50 ..."
+python -m mower decode "30 68 00 50 ..."
 ```
 
 REPL aliases: `f` forward, `b` reverse, `l` left, `r` right, `s` stop, `h`
-home, `a` auto, `i` initiate-remote, `x` blade, `p` poll, `q` quit.
+home, `a` auto, `i` initiate-remote, `x` blade, `p` poll, `?` state,
+`v` version, `q` quit.
 
-From Python:
+### Python API
+
+The main entry point is `MowerClient`, a persistent-socket client. As a
+context manager it always sends `stop` on exit — including on exceptions
+and `KeyboardInterrupt` — which is the recommended way to drive the mower
+from scripts and AI agents:
 
 ```python
-from mower import send_command, repl, remote_cmd
+import time
+from mower import MowerClient
 
-send_command("192.168.68.108", "forward")
-# or drive interactively with the failsafe
-repl("192.168.68.108")
+with MowerClient("192.168.68.108") as m:
+    m.initiate_remote()
+    m.forward()
+    time.sleep(2)
+    m.left()
+    time.sleep(1)
+    # exiting the `with` block sends STOP
+```
+
+For one-shot scripts:
+
+```python
+from mower import send_command, set_time, poll, discover
+
+send_command("192.168.68.108", "home")
+set_time("192.168.68.108")        # defaults to local now()
+reply = poll("192.168.68.108")    # single idle-poll reply Packet
+beacons = discover()              # UDP-broadcast Search, collect replies
+```
+
+Low-level codec:
+
+```python
+from mower import Packet, encode, decode, UART_PAYLOADS, remote_cmd, set_time_payload
+
+# Synthesize an arbitrary 0x69-family payload
+payload = remote_cmd(0x0a)
+```
+
+### Package layout
+
+```
+mower/
+  __init__.py     # public API
+  codec.py        # Packet, encode(), decode(), parse_hex_dump()
+  payloads.py     # UART_PAYLOADS, remote_cmd(), set_time_payload(), wrap_uart()
+  client.py       # MowerClient, send_command(), set_time(), poll(), send_tcp()
+  discovery.py    # discover()
+  repl.py         # interactive REPL with STOP failsafe
+  cli.py          # argparse entry point
+  __main__.py     # `python -m mower`
 ```
 
 ## Protocol
@@ -112,38 +161,15 @@ Encoding quirks:
 
 Known codenames:
 
-| Codename         | Direction               | Purpose                                          |
-| ---------------- | ----------------------- | ------------------------------------------------ |
+| Codename           | Direction                | Purpose                                          |
+| ------------------ | ------------------------ | ------------------------------------------------ |
 | `Search`         | phone → broadcast (UDP) | discovery beacon, sent ~1/s                      |
 | `SearchAck`      | mower → phone (UDP)     | discovery reply with DevName, Mac, Ip, WiFi info |
 | `GetUartData`    | phone → mower (TCP)     | wraps a UART command for the MCU                 |
 | `UartUpLoadData` | mower → phone (TCP)     | wraps the MCU's response                         |
 
-The payload inside `UartUpLoadData` is the MCU's telemetry response. Two
-query opcodes (positioned at byte 2 of the request) have been seen:
-
-| Request opcode | Reply  | Notes                                                                                  |
-| -------------- | ------ | -------------------------------------------------------------------------------------- |
-| `0x7f` (idle)  | 12 B   | recurring keep-alive / status. Voltage *probably* lives somewhere here.                |
-| `0x67` (state) | 32 B   | mower-state response, mostly zeros. App shows "None" — looks like a parser drift.      |
-| `0x66` (ver)   | (none) | mower never replies. App shows "Unknown". The real version is in `SearchAck.DevName`.  |
-
-Inner formats of the responses are not yet decoded.
-
-### Set date and time
-
-A 22-byte UART payload of the form (after XOR-0x30 each byte becomes ASCII):
-
-```
-"22" "T" YYYY MM DD W HH MM SS "FC" CC
-```
-
-- `W` is the ISO weekday (Mon=1..Sun=7).
-- `SS` is sent as `"00"` — the app's picker has no seconds field.
-- `CC` is a 1-byte checksum hex-encoded such that
-  `sum(digit_values_at_positions_3..17) + CC == 0x32`.
-
-See `set_time_payload()` in [mower.py](mower.py).
+The 12-byte payload inside `UartUpLoadData` is the MCU's telemetry response.
+Its inner format is not yet decoded — opaque bytes for now.
 
 ## Operational notes
 
@@ -163,5 +189,5 @@ See `set_time_payload()` in [mower.py](mower.py).
 
 ## Files
 
-- [mower.py](mower.py) — client library + CLI + REPL
+- [mower/](mower/) — Python package (library + CLI + REPL)
 - [logs from phone/](logs%20from%20phone/) — PCAPDroid captures from the phone app
