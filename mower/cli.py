@@ -80,8 +80,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mower-port", type=int, default=9600,
                    help="mower TCP port. Default: 9600")
     p.add_argument("--log-dir", help="optional log dir for /api/logs to read from")
-    p.add_argument("--poll-interval", type=float, default=5.0,
-                   help="seconds between background polls. Default: 5")
+    p.add_argument("--poll-interval", type=float, default=30.0,
+                   help="seconds between background polls. Default: 30. "
+                        "Each cycle takes ~8 s of wire work so going below "
+                        "~10 s overlaps cycles. Use 15-20 s for live "
+                        "debugging, 60+ s for background monitoring.")
     p.add_argument("--no-state", dest="state", action="store_false",
                    help="skip the 32-byte query_state in the background poll")
 

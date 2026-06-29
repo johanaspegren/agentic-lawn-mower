@@ -247,7 +247,7 @@ async def _poll_loop(shared: SharedClient, hub: TelemetryHub,
 
 def create_app(ip: str, port: int = 9600, *,
                log_dir: str | None = None,
-               poll_interval: float = 5.0,
+               poll_interval: float = 30.0,
                poll_state: bool = True):
     """Build and return a configured FastAPI app."""
     from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -359,7 +359,7 @@ def create_app(ip: str, port: int = 9600, *,
 def run(ip: str, *, host: str = "127.0.0.1", port: int = 8000,
         mower_port: int = 9600,
         log_dir: str | None = None,
-        poll_interval: float = 5.0,
+        poll_interval: float = 30.0,
         poll_state: bool = True) -> None:
     """Start the server. Convenience wrapper around uvicorn.run."""
     import uvicorn
