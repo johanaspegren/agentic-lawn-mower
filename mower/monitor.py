@@ -80,12 +80,15 @@ def monitor(ip: str, *, out_path: str | None = None,
             client = MowerClient(ip, port=port, prime=False)
             client.connect()
             try:
-                idle = client.cmd("idle_poll", linger=0.5)
+                # See note in mower/web/server.py: mower seems to process
+                # one request at a time with ~3 s round-trip, so we wait
+                # for the idle reply before sending the state query.
+                idle = client.cmd("idle_poll", linger=3.5)
                 for r in idle:
                     sink.write(_row(ts, r.codename, r.binary))
                 state = []
                 if poll_state:
-                    state = client.cmd("query_state", linger=1.0)
+                    state = client.cmd("query_state", linger=5.0)
                     for r in state:
                         sink.write(_row(ts, r.codename, r.binary))
                 got = len(idle) + len(state)

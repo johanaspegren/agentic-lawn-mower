@@ -193,9 +193,15 @@ async def _poll_loop(shared: SharedClient, hub: TelemetryHub,
     while True:
         ts = datetime.now()
         try:
-            replies = await shared.cmd("idle_poll", linger=0.5)
+            # The mower's request-to-reply round trip is ~2-3 seconds
+            # (observed in phone PCAPDroid captures). The firmware appears
+            # to handle one request at a time and silently drops new
+            # requests that arrive while it's mid-reply. So linger long
+            # enough to actually receive the idle reply BEFORE sending
+            # the state query.
+            replies = await shared.cmd("idle_poll", linger=3.5)
             if poll_state:
-                replies += await shared.cmd("query_state", linger=1.0)
+                replies += await shared.cmd("query_state", linger=5.0)
             for r in replies:
                 sample = {"ts": ts.isoformat(timespec="seconds"), **r}
                 # Try decoding state-bearing responses; cache + attach.

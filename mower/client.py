@@ -147,10 +147,18 @@ class MowerClient:
             self._sock.settimeout(linger)
         return _drain_frames(self._sock)
 
+    # Tag-char convention used by the EGROBOT app (confirmed via PCAPDroid
+    # captures of every command type). The tag char encodes the command
+    # category; the mower silently drops requests sent with the wrong tag.
+    #   x  = queries (idle_poll, query_state, query_version)
+    #   y  = 0x69-family control commands (forward, stop, home, blade, ...)
+    #   g  = set-time (handled separately via set_time())
+    _QUERY_NAMES = frozenset({"idle_poll", "query_state", "query_version"})
+
     def cmd(self, name: str, *, linger: float | None = None) -> list[Packet]:
         """Send a named UART command from `UART_PAYLOADS`."""
         payload = UART_PAYLOADS[name]
-        tag = "x" if name == "idle_poll" else "y"
+        tag = "x" if name in self._QUERY_NAMES else "y"
         return self.send_raw(payload, tag_char=tag, linger=linger)
 
     # --- convenience: control commands -------------------------------------

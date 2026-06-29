@@ -20,6 +20,7 @@ const VERY_STALE_AFTER_SEC = 600;  // red after 10 minutes
 
 const batteryV = $("battery-v");
 const batteryAge = $("battery-age");
+const stateLabel = $("state-label");
 let lastStateTs = null;         // ISO string of last state-bearing sample
 
 async function sendCmd(name) {
@@ -119,8 +120,13 @@ function onSample(s) {
   latestHex.textContent = s.binary_hex ?? "(no binary)";
   lastTs.textContent = s.ts ?? "";
 
-  if (s.decoded && s.decoded.voltage_v !== undefined) {
-    batteryV.textContent = `${s.decoded.voltage_v.toFixed(2)} V`;
+  if (s.decoded) {
+    if (s.decoded.voltage_v !== undefined) {
+      batteryV.textContent = `${s.decoded.voltage_v.toFixed(2)} V`;
+    }
+    if (s.decoded.state !== undefined) {
+      stateLabel.textContent = s.decoded.state;
+    }
     lastStateTs = s.ts;
     refreshBatteryAge();
   }
@@ -158,8 +164,13 @@ async function loadStatus() {
     const r = await fetch("/api/status");
     const data = await r.json();
     ipLabel.textContent = data.ip ?? "";
-    if (data.last_state?.voltage_v !== undefined && data.last_state_ts) {
-      batteryV.textContent = `${data.last_state.voltage_v.toFixed(2)} V`;
+    if (data.last_state && data.last_state_ts) {
+      if (data.last_state.voltage_v !== undefined) {
+        batteryV.textContent = `${data.last_state.voltage_v.toFixed(2)} V`;
+      }
+      if (data.last_state.state !== undefined) {
+        stateLabel.textContent = data.last_state.state;
+      }
       lastStateTs = data.last_state_ts;
       refreshBatteryAge();
     }

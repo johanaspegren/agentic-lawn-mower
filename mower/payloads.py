@@ -66,19 +66,28 @@ UART_PAYLOADS: dict[str, bytes] = {
 }
 
 
+_STATE_LABELS = {
+    0x00: "charging",   # on dock, battery rising
+    0x01: "idle",       # on dock, charge complete / topped-up
+    0x02: "active",     # mowing or driving in remote
+}
+
+
 def decode_state(binary: bytes) -> dict:
     """Decode known fields from a 0x67 ``query_state`` response.
 
     Known so far (M10 firmware 1.5.4, captures from 2026-06-29):
 
+    - **state** (position 8) is the primary state byte. Verified:
+      ``0x00`` = charging on dock (battery rising), ``0x01`` = idle on
+      dock (charge complete), ``0x02`` = active (mowing or driving in
+      remote). Observed live transitioning from 0x00 → 0x01 as the
+      mower reached top-up voltage at ~27.78 V.
     - **voltage_v** (positions 13..16) is the battery voltage in volts.
       Each of the four bytes is a single decimal digit, concatenated to a
       4-digit centivolt value (`pos13 * 1000 + pos14 * 100 + pos15 * 10 +
-      pos16`) divided by 100. Same one-digit-per-byte convention used by
-      the set-time packet.
-
-      Verified against the app showing 24.90 V → bytes ``02 04 09 00`` and
-      24.75 V → bytes ``02 04 07 05``.
+      pos16`) divided by 100. Verified against the app at 24.62 V, 24.75
+      V, 24.90 V, 26.78 V and 26.79 V (six byte-exact matches).
 
     Returns an empty dict for unrecognised payload shapes rather than
     raising. The rest of the response bytes are not yet mapped.
@@ -86,6 +95,8 @@ def decode_state(binary: bytes) -> dict:
     out: dict = {}
     if len(binary) < 17 or binary[:3] != b"\x03\x05\x67":
         return out
+    out["state_byte"] = binary[8]
+    out["state"] = _STATE_LABELS.get(binary[8], f"unknown(0x{binary[8]:02x})")
     digits = binary[13:17]
     if all(d <= 9 for d in digits):
         out["voltage_v"] = (

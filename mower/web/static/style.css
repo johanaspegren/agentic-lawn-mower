@@ -41,6 +41,15 @@ header h1 { margin: 0; font-size: 1.1rem; color: var(--accent); }
 #battery-v.stale { color: var(--warn); }
 #battery-v.bad { color: var(--bad); }
 #battery-age { font-size: 0.75rem; }
+#state-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  background: #21262d;
+  color: var(--muted);
+}
 .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; display: inline-block; }
 .dot-good { background: var(--good); box-shadow: 0 0 6px var(--good); }
 .dot-bad { background: var(--bad); }
