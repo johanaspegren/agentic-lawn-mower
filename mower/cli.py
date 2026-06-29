@@ -9,6 +9,7 @@ from datetime import datetime
 from .client import MowerClient, poll, send_command, send_tcp, set_time
 from .codec import decode, parse_hex_dump
 from .discovery import discover
+from .monitor import monitor
 from .payloads import UART_PAYLOADS, remote_cmd
 from .repl import repl
 
@@ -66,6 +67,32 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("repl", help="Interactive shell (always STOPs on exit)")
     p.add_argument("ip")
+
+    p = sub.add_parser(
+        "monitor",
+        help="Poll the mower forever; log responses to a CSV "
+             "(single file or hourly-rotating)",
+    )
+    p.add_argument("ip")
+    g = p.add_mutually_exclusive_group(required=False)
+    g.add_argument("--out", "-o",
+                   help="single CSV file for ad-hoc captures (one scenario "
+                        "per file). Defaults to mower_log.csv if neither "
+                        "--out nor --log-dir is given.")
+    g.add_argument("--log-dir",
+                   help="rotating-channel mode: write to "
+                        "<log-dir>/<channel>-<hour>.csv with hourly rotation "
+                        "and N-day retention. Recommended for long-running "
+                        "monitoring on the Pi.")
+    p.add_argument("--channel", default="mower",
+                   help="channel name within --log-dir. Default: mower")
+    p.add_argument("--retention-days", type=int, default=14,
+                   help="days of history to keep when using --log-dir. "
+                        "Default: 14")
+    p.add_argument("--interval", "-i", type=float, default=60.0,
+                   help="seconds between polls. Default: 60")
+    p.add_argument("--no-state", dest="state", action="store_false",
+                   help="skip the 32-byte query_state, only idle_poll")
 
     return ap
 
@@ -125,6 +152,19 @@ def main(argv: list[str] | None = None) -> None:
 
     elif args.cmd == "repl":
         repl(args.ip)
+
+    elif args.cmd == "monitor":
+        if args.log_dir is None and args.out is None:
+            args.out = "mower_log.csv"
+        monitor(
+            args.ip,
+            out_path=args.out,
+            log_dir=args.log_dir,
+            channel=args.channel,
+            retention_days=args.retention_days,
+            interval=args.interval,
+            poll_state=args.state,
+        )
 
 
 if __name__ == "__main__":
