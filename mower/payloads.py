@@ -66,28 +66,42 @@ UART_PAYLOADS: dict[str, bytes] = {
 }
 
 
-_STATE_LABELS = {
-    0x00: "charging",   # on dock, battery rising
-    0x01: "idle",       # on dock, charge complete / topped-up
-    0x02: "active",     # mowing or driving in remote
+# State combines two bytes:
+#   pos 8  ~ "operational mode": 0x00 not-parked, 0x01 parked-ready, 0x02 active
+#   pos 12 ~ "power flow":       0x00 charging,   0x01 no-current,   0x07 mowing-drain
+# All five combinations we've actually observed live, with the inferred label.
+_STATE_LABELS: dict[tuple[int, int], str] = {
+    (0x02, 0x07): "mowing",
+    (0x00, 0x00): "charging",
+    (0x01, 0x01): "docked_full",
+    (0x00, 0x01): "idle_off_dock",
 }
 
 
 def decode_state(binary: bytes) -> dict:
     """Decode known fields from a 0x67 ``query_state`` response.
 
-    Known so far (M10 firmware 1.5.4, captures from 2026-06-29):
+    Known so far (M10 firmware 1.5.4):
 
-    - **state** (position 8) is the primary state byte. Verified:
-      ``0x00`` = charging on dock (battery rising), ``0x01`` = idle on
-      dock (charge complete), ``0x02`` = active (mowing or driving in
-      remote). Observed live transitioning from 0x00 → 0x01 as the
-      mower reached top-up voltage at ~27.78 V.
+    - **state** is derived from two bytes: position 8 (operational mode)
+      and position 12 (power flow). The combinations we've observed live:
+
+      ===========  ========  ===========================================
+      (8, 12)      Label     Meaning
+      ===========  ========  ===========================================
+      (0x02, 0x07) mowing    Autonomous mow or remote drive
+      (0x00, 0x00) charging  On dock, battery actively rising
+      (0x01, 0x01) docked_full  On dock, fully charged, no current
+      (0x00, 0x01) idle_off_dock  Off dock, stopped on the lawn
+      ===========  ========  ===========================================
+
+      Any (pos8, pos12) tuple we haven't seen returns "unknown(0xNN/0xMM)".
+
     - **voltage_v** (positions 13..16) is the battery voltage in volts.
       Each of the four bytes is a single decimal digit, concatenated to a
       4-digit centivolt value (`pos13 * 1000 + pos14 * 100 + pos15 * 10 +
-      pos16`) divided by 100. Verified against the app at 24.62 V, 24.75
-      V, 24.90 V, 26.78 V and 26.79 V (six byte-exact matches).
+      pos16`) divided by 100. Verified against the app at 24.32, 24.62,
+      24.75, 24.90, 26.78, 26.79 and 27.35 V (seven byte-exact matches).
 
     Returns an empty dict for unrecognised payload shapes rather than
     raising. The rest of the response bytes are not yet mapped.
@@ -95,8 +109,13 @@ def decode_state(binary: bytes) -> dict:
     out: dict = {}
     if len(binary) < 17 or binary[:3] != b"\x03\x05\x67":
         return out
-    out["state_byte"] = binary[8]
-    out["state"] = _STATE_LABELS.get(binary[8], f"unknown(0x{binary[8]:02x})")
+    pos8, pos12 = binary[8], binary[12]
+    out["mode_byte"] = pos8
+    out["flow_byte"] = pos12
+    out["state"] = _STATE_LABELS.get(
+        (pos8, pos12),
+        f"unknown(0x{pos8:02x}/0x{pos12:02x})",
+    )
     digits = binary[13:17]
     if all(d <= 9 for d in digits):
         out["voltage_v"] = (
