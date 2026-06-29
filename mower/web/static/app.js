@@ -15,6 +15,12 @@ const ipLabel = $("ip");
 const lastTs = $("last-ts");
 
 const FEED_MAX_LINES = 200;
+const STALE_AFTER_SEC = 60;     // amber after 60s without a fresh state reply
+const VERY_STALE_AFTER_SEC = 600;  // red after 10 minutes
+
+const batteryV = $("battery-v");
+const batteryAge = $("battery-age");
+let lastStateTs = null;         // ISO string of last state-bearing sample
 
 async function sendCmd(name) {
   flash(`> ${name}`);
@@ -112,16 +118,51 @@ function onSample(s) {
   latestCodename.textContent = s.codename;
   latestHex.textContent = s.binary_hex ?? "(no binary)";
   lastTs.textContent = s.ts ?? "";
-  // Feed line: timestamp + codename + first 16 hex chars
+
+  if (s.decoded && s.decoded.voltage_v !== undefined) {
+    batteryV.textContent = `${s.decoded.voltage_v.toFixed(2)} V`;
+    lastStateTs = s.ts;
+    refreshBatteryAge();
+  }
+
+  // Feed line: timestamp + codename + first 16 hex chars + decoded summary
   const head = (s.binary_hex ?? "").slice(0, 32);
-  flash(`${s.codename} ${head}`);
+  const dec = s.decoded ? ` [${Object.entries(s.decoded)
+    .map(([k, v]) => `${k}=${v}`).join(" ")}]` : "";
+  flash(`${s.codename} ${head}${dec}`);
 }
+
+function refreshBatteryAge() {
+  if (!lastStateTs) {
+    batteryAge.textContent = "";
+    batteryV.className = "";
+    return;
+  }
+  const ageSec = Math.max(0, (Date.now() - Date.parse(lastStateTs)) / 1000);
+  batteryAge.textContent = `(${formatAge(ageSec)} ago)`;
+  batteryV.className = ageSec > VERY_STALE_AFTER_SEC ? "bad"
+                     : ageSec > STALE_AFTER_SEC ? "stale"
+                     : "";
+}
+
+function formatAge(sec) {
+  if (sec < 60) return `${Math.round(sec)}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  return `${Math.round(sec / 3600)}h`;
+}
+
+setInterval(refreshBatteryAge, 1000);
 
 async function loadStatus() {
   try {
     const r = await fetch("/api/status");
     const data = await r.json();
     ipLabel.textContent = data.ip ?? "";
+    if (data.last_state?.voltage_v !== undefined && data.last_state_ts) {
+      batteryV.textContent = `${data.last_state.voltage_v.toFixed(2)} V`;
+      lastStateTs = data.last_state_ts;
+      refreshBatteryAge();
+    }
     if (data.last_sample) onSample(data.last_sample);
   } catch (e) {
     flash(`! status: ${e}`, "err");

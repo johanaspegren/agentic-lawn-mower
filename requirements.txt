@@ -12,3 +12,4 @@
 
 fastapi>=0.110
 uvicorn[standard]>=0.27
+wsproto>=1.2          # permissive WebSocket backend (uvicorn ws="wsproto")

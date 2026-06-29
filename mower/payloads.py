@@ -66,6 +66,34 @@ UART_PAYLOADS: dict[str, bytes] = {
 }
 
 
+def decode_state(binary: bytes) -> dict:
+    """Decode known fields from a 0x67 ``query_state`` response.
+
+    Known so far (M10 firmware 1.5.4, captures from 2026-06-29):
+
+    - **voltage_v** (positions 13..16) is the battery voltage in volts.
+      Each of the four bytes is a single decimal digit, concatenated to a
+      4-digit centivolt value (`pos13 * 1000 + pos14 * 100 + pos15 * 10 +
+      pos16`) divided by 100. Same one-digit-per-byte convention used by
+      the set-time packet.
+
+      Verified against the app showing 24.90 V → bytes ``02 04 09 00`` and
+      24.75 V → bytes ``02 04 07 05``.
+
+    Returns an empty dict for unrecognised payload shapes rather than
+    raising. The rest of the response bytes are not yet mapped.
+    """
+    out: dict = {}
+    if len(binary) < 17 or binary[:3] != b"\x03\x05\x67":
+        return out
+    digits = binary[13:17]
+    if all(d <= 9 for d in digits):
+        out["voltage_v"] = (
+            digits[0] * 1000 + digits[1] * 100 + digits[2] * 10 + digits[3]
+        ) / 100
+    return out
+
+
 def wrap_uart(payload: bytes, chn: str = "0", tag_char: str = "y") -> bytes:
     """Wrap a UART payload in a `GetUartData` packet ready for TCP send."""
     return encode(

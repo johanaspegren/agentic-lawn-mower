@@ -31,6 +31,7 @@ from .codec import Packet, decode, encode, parse_hex_dump
 from .discovery import discover
 from .payloads import (
     UART_PAYLOADS,
+    decode_state,
     remote_cmd,
     set_time_payload,
     wrap_uart,
@@ -44,6 +45,7 @@ __all__ = [
     "REPL_ALIASES",
     "UART_PAYLOADS",
     "decode",
+    "decode_state",
     "discover",
     "encode",
     "parse_hex_dump",

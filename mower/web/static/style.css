@@ -30,6 +30,17 @@ header {
 }
 header h1 { margin: 0; font-size: 1.1rem; color: var(--accent); }
 .status { display: flex; gap: 0.6rem; align-items: center; font-size: 0.85rem; }
+.battery {
+  display: inline-flex; align-items: baseline; gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #0d1117;
+}
+#battery-v { color: var(--accent); font-variant-numeric: tabular-nums; }
+#battery-v.stale { color: var(--warn); }
+#battery-v.bad { color: var(--bad); }
+#battery-age { font-size: 0.75rem; }
 .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; display: inline-block; }
 .dot-good { background: var(--good); box-shadow: 0 0 6px var(--good); }
 .dot-bad { background: var(--bad); }

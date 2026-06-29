@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from ..client import MowerClient
-from ..payloads import UART_PAYLOADS
+from ..logger import MOWER_FIELDS, HourlyRotatingCSV
+from ..payloads import UART_PAYLOADS, decode_state
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -45,7 +46,11 @@ class SharedClient:
 
     async def _ensure_connected(self) -> MowerClient:
         if self._client is None:
-            self._client = MowerClient(self.ip, port=self.port, prime=False)
+            # prime=True replays the phone's "first packet on a fresh socket
+            # is an idle_poll" pattern. Worth doing in case the firmware
+            # treats unprimed sockets differently (e.g. won't service state
+            # queries until it sees a heartbeat).
+            self._client = MowerClient(self.ip, port=self.port, prime=True)
             await asyncio.to_thread(self._client.connect)
         return self._client
 
@@ -117,6 +122,11 @@ class TelemetryHub:
         self._subs: set = set()
         self._lock = asyncio.Lock()
         self.last_sample: dict | None = None
+        # Latest decoded state values + when they were observed. Updated when
+        # a state packet arrives; persists across drop-outs so the UI can
+        # render staleness.
+        self.last_state: dict = {}
+        self.last_state_ts: str | None = None
 
     async def subscribe(self, ws) -> None:
         async with self._lock:
@@ -175,8 +185,11 @@ def read_log_rows(log_dir: Path, channel: str, hours: int = 24) -> list[dict]:
 
 
 async def _poll_loop(shared: SharedClient, hub: TelemetryHub,
-                     interval: float, poll_state: bool) -> None:
-    """Periodically poll the mower and broadcast each reply."""
+                     interval: float, poll_state: bool,
+                     writer: HourlyRotatingCSV | None = None,
+                     channel: str = "mower") -> None:
+    """Periodically poll the mower, broadcast each reply, and optionally
+    persist every sample to the rotating channel log."""
     while True:
         ts = datetime.now()
         try:
@@ -184,15 +197,42 @@ async def _poll_loop(shared: SharedClient, hub: TelemetryHub,
             if poll_state:
                 replies += await shared.cmd("query_state", linger=1.0)
             for r in replies:
-                await hub.publish({"ts": ts.isoformat(timespec="seconds"), **r})
+                sample = {"ts": ts.isoformat(timespec="seconds"), **r}
+                # Try decoding state-bearing responses; cache + attach.
+                bin_hex = r.get("binary_hex") or ""
+                if bin_hex:
+                    decoded = decode_state(bytes.fromhex(bin_hex))
+                    if decoded:
+                        hub.last_state.update(decoded)
+                        hub.last_state_ts = sample["ts"]
+                        sample["decoded"] = decoded
+                await hub.publish(sample)
+                if writer is not None:
+                    # CSV schema stays raw bytes only — decoding lives in
+                    # mower.payloads so analysis can re-derive whatever we
+                    # want from the original capture.
+                    await asyncio.to_thread(writer.write, {
+                        "ts": sample["ts"],
+                        "codename": r["codename"],
+                        "len": str(len(bin_hex) // 2) if bin_hex else "",
+                        "binary_hex": bin_hex,
+                    })
         except Exception as e:
-            await hub.publish({
+            sample = {
                 "ts": ts.isoformat(timespec="seconds"),
                 "codename": "ERROR",
                 "fields": {"error": str(e)},
                 "binary_hex": None,
                 "tag": "",
-            })
+            }
+            await hub.publish(sample)
+            if writer is not None:
+                await asyncio.to_thread(writer.write, {
+                    "ts": sample["ts"],
+                    "codename": "ERROR",
+                    "len": "",
+                    "binary_hex": str(e),
+                })
         await asyncio.sleep(interval)
 
 
@@ -211,13 +251,19 @@ def create_app(ip: str, port: int = 9600, *,
     shared = SharedClient(ip, port)
     hub = TelemetryHub()
     log_root = Path(log_dir) if log_dir else None
+    writer: HourlyRotatingCSV | None = None
+    if log_root is not None:
+        writer = HourlyRotatingCSV(
+            root=log_root, channel="mower",
+            fieldnames=MOWER_FIELDS, retention_days=14,
+        )
     poll_task: asyncio.Task | None = None
 
     @asynccontextmanager
     async def lifespan(app):
         nonlocal poll_task
         poll_task = asyncio.create_task(
-            _poll_loop(shared, hub, poll_interval, poll_state)
+            _poll_loop(shared, hub, poll_interval, poll_state, writer=writer)
         )
         try:
             yield
@@ -229,6 +275,8 @@ def create_app(ip: str, port: int = 9600, *,
                 except (asyncio.CancelledError, Exception):
                     pass
             await shared.shutdown()
+            if writer is not None:
+                writer.close()
 
     app = FastAPI(title="Mower control", lifespan=lifespan)
 
@@ -238,11 +286,12 @@ def create_app(ip: str, port: int = 9600, *,
 
     @app.get("/api/status")
     async def status() -> dict[str, Any]:
-        out = {
+        return {
             "ip": ip,
             "last_sample": hub.last_sample,
+            "last_state": hub.last_state,
+            "last_state_ts": hub.last_state_ts,
         }
-        return out
 
     @app.post("/api/cmd/{name}")
     async def cmd(name: str) -> dict[str, Any]:
@@ -314,4 +363,8 @@ def run(ip: str, *, host: str = "127.0.0.1", port: int = 8000,
     print(f"[serve] UI at http://{host}:{port}", file=sys.stderr)
     if log_dir:
         print(f"[serve] reading logs from {log_dir}", file=sys.stderr)
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Use wsproto for WebSocket: the default `websockets` backend (v14+)
+    # rejects handshakes whose Origin isn't explicitly allowlisted, which
+    # 403s every browser tab. wsproto is permissive and works fine for our
+    # localhost dev tool.
+    uvicorn.run(app, host=host, port=port, log_level="info", ws="wsproto")
