@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mower control</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Mower</h1>
+    <div class="status">
+      <span id="conn" class="dot dot-bad"></span>
+      <span id="ip"></span>
+      <span id="last-ts" class="muted"></span>
+    </div>
+  </header>
+
+  <button id="stop" class="stop">STOP</button>
+
+  <main>
+    <section class="drive">
+      <h2>Drive</h2>
+      <div class="dpad">
+        <button data-cmd="forward" class="dir up">▲ forward</button>
+        <button data-cmd="left" class="dir left">◀ left</button>
+        <button data-cmd="stop" class="dir center">stop</button>
+        <button data-cmd="right" class="dir right">right ▶</button>
+        <button data-cmd="reverse" class="dir down">▼ reverse</button>
+      </div>
+    </section>
+
+    <section class="aux">
+      <h2>Actions</h2>
+      <div class="buttons">
+        <button data-cmd="initiate_remote">initiate remote</button>
+        <button data-cmd="auto">auto mow</button>
+        <button data-cmd="home">home</button>
+        <button data-cmd="blade" class="danger">blade ⚠</button>
+      </div>
+    </section>
+
+    <section class="clock">
+      <h2>Clock</h2>
+      <div class="buttons">
+        <button id="set-time-now">set to now</button>
+        <input id="set-time-dt" type="datetime-local">
+        <button id="set-time-pick">set to picked</button>
+      </div>
+    </section>
+
+    <section class="telemetry">
+      <h2>Latest poll</h2>
+      <div id="latest" class="latest">
+        <div class="codename muted">(waiting…)</div>
+        <pre class="hex"></pre>
+      </div>
+    </section>
+
+    <section class="feed">
+      <h2>Live feed</h2>
+      <pre id="feed" class="log"></pre>
+    </section>
+
+    <section class="placeholder">
+      <h2>Coming soon</h2>
+      <ul class="muted">
+        <li>Voltage timeline chart (once we decode the byte)</li>
+        <li>IMU acceleration plot (when the Pi is in the mower)</li>
+        <li>Camera feed (when the Pi has one mounted)</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

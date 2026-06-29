@@ -1,0 +1,14 @@
+# Runtime dependencies for the mower package and its web UI.
+#
+# Install into a project-local venv:
+#
+#   python -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r requirements.txt
+#   pip install -e .          # editable install of the mower package itself
+#
+# The core protocol client + CLI + REPL has no third-party dependencies.
+# Everything below is for `python -m mower serve` (the FastAPI UI).
+
+fastapi>=0.110
+uvicorn[standard]>=0.27

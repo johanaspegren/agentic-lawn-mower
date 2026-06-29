@@ -1,0 +1,19 @@
+[project]
+name = "mower"
+version = "0.1.0"
+description = "Local protocol client + control UI for the Lyfco E1800 / EGROBOT M10 mower"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mower*"]

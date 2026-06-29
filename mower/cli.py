@@ -69,6 +69,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("ip")
 
     p = sub.add_parser(
+        "serve",
+        help="Run the FastAPI control UI (requires the [web] extra)",
+    )
+    p.add_argument("--ip", required=True, help="mower IP, e.g. 192.168.68.108")
+    p.add_argument("--host", default="127.0.0.1",
+                   help="bind address. Default: 127.0.0.1 (localhost only). "
+                        "Use 0.0.0.0 to expose to the LAN — no auth in v1.")
+    p.add_argument("--port", type=int, default=8000, help="HTTP port. Default: 8000")
+    p.add_argument("--mower-port", type=int, default=9600,
+                   help="mower TCP port. Default: 9600")
+    p.add_argument("--log-dir", help="optional log dir for /api/logs to read from")
+    p.add_argument("--poll-interval", type=float, default=5.0,
+                   help="seconds between background polls. Default: 5")
+    p.add_argument("--no-state", dest="state", action="store_false",
+                   help="skip the 32-byte query_state in the background poll")
+
+    p = sub.add_parser(
         "monitor",
         help="Poll the mower forever; log responses to a CSV "
              "(single file or hourly-rotating)",
@@ -152,6 +169,23 @@ def main(argv: list[str] | None = None) -> None:
 
     elif args.cmd == "repl":
         repl(args.ip)
+
+    elif args.cmd == "serve":
+        try:
+            from .web import run as run_web
+        except ImportError as e:
+            print(f"error: install the web extra first: pip install -e '.[web]'\n  ({e})",
+                  file=sys.stderr)
+            sys.exit(1)
+        run_web(
+            args.ip,
+            host=args.host,
+            port=args.port,
+            mower_port=args.mower_port,
+            log_dir=args.log_dir,
+            poll_interval=args.poll_interval,
+            poll_state=args.state,
+        )
 
     elif args.cmd == "monitor":
         if args.log_dir is None and args.out is None:

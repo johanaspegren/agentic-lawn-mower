@@ -36,11 +36,24 @@ The 0x69 command family uses a single parameter byte plus a one-byte checksum
 
 Not yet mapped: anything `0x09`+ (likely either unused or maintenance-only).
 
+## Install
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt   # fastapi + uvicorn (only needed for the web UI)
+pip install -e .                  # editable install of the mower package
+```
+
+The core protocol client and CLI work without `requirements.txt` — the third-party
+deps are only required for `python -m mower serve` (the FastAPI control UI).
+
 ## Usage
 
 ### CLI
 
 ```bash
+# (one-time, every shell:) source .venv/bin/activate
 ping -c 3 192.168.68.108
 
 # Find the mower on the LAN (broadcast Search)

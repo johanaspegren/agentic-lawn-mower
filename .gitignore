@@ -36,3 +36,11 @@ dist/
 
 # Captured phone traffic dumps
 logs from phone/
+
+# Monitor output (single-file ad-hoc captures and rotating channel dirs)
+mower_log.csv
+mower-logs/
+charging.csv
+charged.csv
+mowing.csv
+*.csv.gz
