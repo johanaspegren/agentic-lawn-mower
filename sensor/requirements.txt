@@ -10,3 +10,9 @@ adafruit-circuitpython-lsm9ds1>=2.1
 
 # Provides the `board` / `busio` modules on Raspberry Pi.
 adafruit-blinka>=8.0
+
+# Pi-side HTTP/WebSocket server (sensor/server.py) — same stack as the
+# mower-side server so the patterns match.
+fastapi>=0.110
+uvicorn[standard]>=0.27
+wsproto>=1.2

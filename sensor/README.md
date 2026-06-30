@@ -6,22 +6,57 @@ data collector.
 
 ## One-time Pi setup
 
-Tested on Raspberry Pi 4B running Raspberry Pi OS Trixie (Python 3.13
-default), Sense HAT attached.
+Tested on Raspberry Pi 4B with the Sense HAT attached.
 
-### 1. Base packages
+### 1. Make `python` mean 3.12 system-wide (via pyenv)
+
+The Pi's apt-installed Python tends to lag (3.7 on Buster, 3.11 on Bookworm).
+We want 3.12 globally so `python` and `python3` both resolve to it. Pyenv is
+the clean way to do this without touching the system Python (which apt
+itself depends on).
 
 ```bash
+# Build dependencies — Python is compiled from source on the Pi
 sudo apt update
-sudo apt install -y python3-venv python3-pip python-is-python3 i2c-tools git
+sudo apt install -y make build-essential libssl-dev zlib1g-dev libbz2-dev \
+  libreadline-dev libsqlite3-dev wget curl llvm libncursesw5-dev xz-utils \
+  tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev git i2c-tools
+
+# Install pyenv
+curl https://pyenv.run | bash
+
+# Wire pyenv into the shell. For bash:
+cat >> ~/.bashrc <<'EOF'
+
+# pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+EOF
+
+# Replace ~/.bashrc with ~/.zshrc / ~/.config/fish/config.fish for those shells.
+
+# Reload the shell so PYENV_ROOT is set
+exec $SHELL
 ```
 
-`python-is-python3` makes plain `python` resolve to `python3` so we don't
-have to remember which is which.
+Now build Python 3.12 from source. This takes ~15–20 minutes on a Pi 4:
 
 ```bash
-python --version          # -> Python 3.13.x
+pyenv install 3.12.7      # or whichever 3.12.x is current
+pyenv global 3.12.7
 ```
+
+Verify:
+
+```bash
+which python              # -> /home/<you>/.pyenv/shims/python
+python --version          # -> Python 3.12.7
+python3 --version         # -> Python 3.12.7
+```
+
+Both `python` and `python3` now point to 3.12.7. The system Python is still
+at `/usr/bin/python3.7` (or whatever) and unchanged.
 
 ### 2. Enable I²C and confirm the Sense HAT is alive
 
@@ -30,61 +65,25 @@ sudo raspi-config nonint do_i2c 0    # enables I²C (no-op if already on)
 sudo i2cdetect -y 1                  # should show 0x1c, 0x46, 0x5c, 0x5f, 0x6a
 ```
 
-The LSM9DS1 accel/gyro is at `0x6a` and the magnetometer at `0x1c`. The
-other addresses are pressure (0x5c), humidity (0x5f), and the LED-matrix
-MCU (0x46). If `i2cdetect` shows nothing, the Sense HAT isn't seated or
-I²C isn't on.
+The LSM9DS1 accel/gyro is at `0x6a`; magnetometer at `0x1c`. The other
+addresses are pressure (0x5c), humidity (0x5f), and the LED-matrix MCU (0x46).
+If `i2cdetect` shows nothing, the Sense HAT isn't seated or I²C isn't on.
 
 ### 3. Project-local venv
 
 ```bash
+# Clone (or pull) the repo on the Pi
 git clone <your-repo-url> ~/robo-lawn-mover
 cd ~/robo-lawn-mover
 
+# Create the venv — picks up Python 3.12 from pyenv
 python -m venv .venv
 source .venv/bin/activate
-python --version          # -> Python 3.13.x
+python --version          # -> Python 3.12.7
 
 pip install -U pip
 pip install -r sensor/requirements.txt
 ```
-
-### 4. Enable & install the camera stack (optional, for `camera_snap.py`)
-
-If you have a Pi Camera Module attached (CSI ribbon), install picamera2
-and make sure the venv can see it. picamera2 depends on the system
-`libcamera`, so it must come from apt — pip-installing it in an isolated
-venv won't work.
-
-```bash
-sudo apt install -y python3-picamera2 python3-libcamera
-
-# Let the existing venv see the system site-packages
-sed -i 's/include-system-site-packages = false/include-system-site-packages = true/' \
-    .venv/pyvenv.cfg
-
-# Confirm: should print the picamera2 module path
-.venv/bin/python -c "import picamera2; print(picamera2.__file__)"
-```
-
-Test the camera:
-
-```bash
-rpicam-still -o /tmp/test.jpg -t 1000 && ls -lh /tmp/test.jpg
-```
-
-### 5. Register the `mower` package (needed by the logger)
-
-The logger reuses `HourlyRotatingCSV` from the main `mower` package, so we
-need it importable inside the Pi's venv:
-
-```bash
-# from the repo root, with .venv active
-pip install -e .
-```
-
-`pip install -e .` only installs the core package — fastapi/uvicorn are
-optional and not pulled in.
 
 ## Run the accelerometer prototype
 
@@ -110,46 +109,87 @@ moves it.
 If you see *"Errno 121 Remote I/O error"* or all-zero readings, I²C is
 disabled or the Sense HAT isn't seated — re-run step 2.
 
-## Run the continuous logger
+## Optional setup: camera + mower package
 
-Streams IMU samples (accel + gyro + magnetometer) to hourly-rotating CSVs
-with gzip + 14-day retention, reusing the same `HourlyRotatingCSV`
-infrastructure the mower telemetry uses:
+The IMU logger and the Pi-side server import `mower.logger.HourlyRotatingCSV`,
+so the `mower` package needs to be installed in the venv:
 
 ```bash
-source .venv/bin/activate
-python sensor/imu_logger.py --log-dir ./sensor-logs --hz 25
+# From the repo root, with .venv active
+pip install -e .
 ```
 
-Output lands at `sensor-logs/imu-2026-06-29T22.csv`. After each hour
-rolls over the previous file gets gzipped automatically; anything past
-14 days is deleted.
+The camera scripts (`camera_snap.py`, `server.py`'s snapshot serving) use
+the Bookworm picamera2 stack. picamera2 depends on the system `libcamera`
+and is awkward to install via pip, so install via apt and let the venv
+inherit:
 
-Storage budget at 25 Hz: ~13 MB/hour uncompressed, ~2–3 MB/hour gzipped,
-~400 MB at full 14-day retention. Easy for any SD card.
+```bash
+sudo apt install -y python3-picamera2 python3-libcamera
 
-To run as a long-lived service (survives reboots, restarts on crash), see
-the systemd unit instructions further down (TODO once we're happy with
-the prototype).
+# Let the existing venv see system site-packages
+sed -i 's/include-system-site-packages = false/include-system-site-packages = true/' \
+    .venv/pyvenv.cfg
+
+# Confirm importable
+.venv/bin/python -c "import picamera2; print(picamera2.__file__)"
+```
+
+Quick camera sanity (no Python needed):
+
+```bash
+rpicam-hello --list-cameras
+rpicam-still -o /tmp/test.jpg -t 2000 --nopreview
+```
+
+## Run the continuous IMU logger
+
+Standalone IMU-only mode — writes hourly-rotating CSVs to `./sensor-logs/`
+with gzip and 14-day retention. Useful if you only want data collection
+without serving anything.
+
+```bash
+python sensor/imu_logger.py --log-dir ./sensor-logs --hz 25
+```
 
 ## Run the camera snapshotter
 
 ```bash
-source .venv/bin/activate
 python sensor/camera_snap.py --dir ./snapshots --interval 60
 ```
 
-Writes one JPEG per minute to `snapshots/YYYY-MM-DD/snap_HH-MM-SS.jpg`,
-maintains `snapshots/latest.jpg` as a symlink to the most recent frame,
-and prunes day-buckets older than 14 days. Storage at default 1280×720 is
-~115 MB/day → ~1.6 GB at full retention.
+Writes one JPEG per minute to `snapshots/YYYY-MM-DD/snap_HH-MM-SS.jpg` and
+maintains `snapshots/latest.jpg` as a symlink to the most recent frame.
+~1.6 GB at 14-day retention.
 
-To peek at the latest frame from your laptop:
+## Run the Pi-side server
+
+Combined service: reads IMU at 25 Hz, logs to CSV (same format as
+`imu_logger.py`), and serves HTTP/WebSocket endpoints the mower UI can
+fetch:
+
+| Endpoint | What |
+| --- | --- |
+| `GET /` | small JSON status page |
+| `GET /latest.jpg` | most recent camera snapshot |
+| `GET /api/imu` | latest IMU sample |
+| `GET /api/imu/recent?seconds=10` | last N seconds as JSON |
+| `WS  /api/imu/ws` | live IMU stream |
 
 ```bash
-scp <pi-user>@mower-pi.local:~/dev/robo-lawn-mover/snapshots/latest.jpg .
-open latest.jpg
+python -m sensor.server
 ```
 
-A live MJPEG stream and a hook in the mower-control UI are TODO once the
-snapshots prove useful.
+Listens on `0.0.0.0:8001`. From the Mac browser:
+<http://roboworm.local:8001/> for the status page,
+<http://roboworm.local:8001/latest.jpg> for the live frame.
+
+Configurable via env vars: `MOWER_IMU_HZ`, `MOWER_SENSOR_PORT`,
+`MOWER_SENSOR_LOG_DIR`, `MOWER_SNAPSHOTS_DIR`,
+`MOWER_SENSOR_RETENTION_DAYS`.
+
+**Don't run `sensor/server.py` and `sensor/imu_logger.py` at the same
+time.** Both touch the I²C bus and would fight; the server already
+includes the logger's functionality. `sensor/camera_snap.py` runs as a
+separate process (it owns the camera; the server only serves the latest
+file it produced).

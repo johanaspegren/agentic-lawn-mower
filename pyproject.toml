@@ -10,10 +10,13 @@ web = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
 ]
+dev = [
+    "pytest>=7",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["mower*"]
+include = ["mower*", "sensor*"]
