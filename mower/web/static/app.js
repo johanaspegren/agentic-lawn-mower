@@ -21,6 +21,7 @@ const VERY_STALE_AFTER_SEC = 600;  // red after 10 minutes
 const batteryV = $("battery-v");
 const batteryAge = $("battery-age");
 const stateLabel = $("state-label");
+const alertBanner = $("alert-banner");
 let lastStateTs = null;         // ISO string of last state-bearing sample
 
 async function sendCmd(name) {
@@ -130,6 +131,7 @@ function onSample(s) {
     lastStateTs = s.ts;
     refreshBatteryAge();
   }
+  if (s.alert) updateAlert(s.alert);
 
   // Feed line: timestamp + codename + first 16 hex chars + decoded summary
   const head = (s.binary_hex ?? "").slice(0, 32);
@@ -159,11 +161,27 @@ function formatAge(sec) {
 
 setInterval(refreshBatteryAge, 1000);
 
+function updateAlert(alert) {
+  if (!alert) return;
+  if (alert.alert_active) {
+    const mins = Math.floor(alert.duration_sec / 60);
+    const secs = Math.floor(alert.duration_sec % 60);
+    alertBanner.textContent =
+      `⚠ Mower stuck — ${alert.state} for ${mins}m ${secs}s. Check it.`;
+    alertBanner.hidden = false;
+    document.title = "⚠ MOWER STUCK";
+  } else {
+    alertBanner.hidden = true;
+    document.title = "Mower control";
+  }
+}
+
 async function loadStatus() {
   try {
     const r = await fetch("/api/status");
     const data = await r.json();
     ipLabel.textContent = data.ip ?? "";
+    updateAlert(data.alert);
     if (data.last_state && data.last_state_ts) {
       if (data.last_state.voltage_v !== undefined) {
         batteryV.textContent = `${data.last_state.voltage_v.toFixed(2)} V`;

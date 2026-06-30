@@ -87,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "debugging, 60+ s for background monitoring.")
     p.add_argument("--no-state", dest="state", action="store_false",
                    help="skip the 32-byte query_state in the background poll")
+    p.add_argument("--alert-webhook",
+                   help="Slack or Discord incoming-webhook URL. Posted to "
+                        "when the mower has been idle off-dock for longer "
+                        "than --alert-threshold. Falls back to env var "
+                        "MOWER_ALERT_WEBHOOK.")
+    p.add_argument("--alert-threshold", type=float, default=180.0,
+                   help="seconds in idle_off_dock before firing. Default: 180")
 
     p = sub.add_parser(
         "monitor",
@@ -180,6 +187,8 @@ def main(argv: list[str] | None = None) -> None:
             print(f"error: install the web extra first: pip install -e '.[web]'\n  ({e})",
                   file=sys.stderr)
             sys.exit(1)
+        import os
+        webhook = args.alert_webhook or os.environ.get("MOWER_ALERT_WEBHOOK")
         run_web(
             args.ip,
             host=args.host,
@@ -188,6 +197,8 @@ def main(argv: list[str] | None = None) -> None:
             log_dir=args.log_dir,
             poll_interval=args.poll_interval,
             poll_state=args.state,
+            alert_threshold_sec=args.alert_threshold,
+            alert_webhook=webhook,
         )
 
     elif args.cmd == "monitor":

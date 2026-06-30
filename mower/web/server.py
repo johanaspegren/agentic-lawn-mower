@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ..alerts import AlertTracker, webhook_notifier
 from ..client import MowerClient
 from ..logger import MOWER_FIELDS, HourlyRotatingCSV
 from ..payloads import UART_PAYLOADS, decode_state
@@ -187,7 +188,8 @@ def read_log_rows(log_dir: Path, channel: str, hours: int = 24) -> list[dict]:
 async def _poll_loop(shared: SharedClient, hub: TelemetryHub,
                      interval: float, poll_state: bool,
                      writer: HourlyRotatingCSV | None = None,
-                     channel: str = "mower") -> None:
+                     channel: str = "mower",
+                     alert_tracker: AlertTracker | None = None) -> None:
     """Periodically poll the mower, broadcast each reply, and optionally
     persist every sample to the rotating channel log."""
     while True:
@@ -212,6 +214,14 @@ async def _poll_loop(shared: SharedClient, hub: TelemetryHub,
                         hub.last_state.update(decoded)
                         hub.last_state_ts = sample["ts"]
                         sample["decoded"] = decoded
+                        if alert_tracker is not None:
+                            from dataclasses import asdict
+                            await alert_tracker.observe(
+                                decoded.get("state"),
+                                voltage_v=decoded.get("voltage_v"),
+                                now=ts,
+                            )
+                            sample["alert"] = asdict(alert_tracker.status(now=ts))
                 await hub.publish(sample)
                 if writer is not None:
                     # CSV schema stays raw bytes only — decoding lives in
@@ -248,7 +258,9 @@ async def _poll_loop(shared: SharedClient, hub: TelemetryHub,
 def create_app(ip: str, port: int = 9600, *,
                log_dir: str | None = None,
                poll_interval: float = 30.0,
-               poll_state: bool = True):
+               poll_state: bool = True,
+               alert_threshold_sec: float = 180.0,
+               alert_webhook: str | None = None):
     """Build and return a configured FastAPI app."""
     from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.responses import FileResponse
@@ -263,13 +275,21 @@ def create_app(ip: str, port: int = 9600, *,
             root=log_root, channel="mower",
             fieldnames=MOWER_FIELDS, retention_days=14,
         )
+    notifiers = []
+    if alert_webhook:
+        notifiers.append(webhook_notifier(alert_webhook))
+    alert_tracker = AlertTracker(
+        threshold_seconds=alert_threshold_sec,
+        notifiers=notifiers,
+    )
     poll_task: asyncio.Task | None = None
 
     @asynccontextmanager
     async def lifespan(app):
         nonlocal poll_task
         poll_task = asyncio.create_task(
-            _poll_loop(shared, hub, poll_interval, poll_state, writer=writer)
+            _poll_loop(shared, hub, poll_interval, poll_state,
+                       writer=writer, alert_tracker=alert_tracker)
         )
         try:
             yield
@@ -292,11 +312,13 @@ def create_app(ip: str, port: int = 9600, *,
 
     @app.get("/api/status")
     async def status() -> dict[str, Any]:
+        from dataclasses import asdict
         return {
             "ip": ip,
             "last_sample": hub.last_sample,
             "last_state": hub.last_state,
             "last_state_ts": hub.last_state_ts,
+            "alert": asdict(alert_tracker.status()),
         }
 
     @app.post("/api/cmd/{name}")
@@ -360,11 +382,15 @@ def run(ip: str, *, host: str = "127.0.0.1", port: int = 8000,
         mower_port: int = 9600,
         log_dir: str | None = None,
         poll_interval: float = 30.0,
-        poll_state: bool = True) -> None:
+        poll_state: bool = True,
+        alert_threshold_sec: float = 180.0,
+        alert_webhook: str | None = None) -> None:
     """Start the server. Convenience wrapper around uvicorn.run."""
     import uvicorn
     app = create_app(ip, port=mower_port, log_dir=log_dir,
-                     poll_interval=poll_interval, poll_state=poll_state)
+                     poll_interval=poll_interval, poll_state=poll_state,
+                     alert_threshold_sec=alert_threshold_sec,
+                     alert_webhook=alert_webhook)
     print(f"[serve] mower @ {ip}:{mower_port}", file=sys.stderr)
     print(f"[serve] UI at http://{host}:{port}", file=sys.stderr)
     if log_dir:
@@ -373,4 +399,12 @@ def run(ip: str, *, host: str = "127.0.0.1", port: int = 8000,
     # rejects handshakes whose Origin isn't explicitly allowlisted, which
     # 403s every browser tab. wsproto is permissive and works fine for our
     # localhost dev tool.
-    uvicorn.run(app, host=host, port=port, log_level="info", ws="wsproto")
+    #
+    # ws_ping_interval / ws_ping_timeout keep the connection alive across
+    # the (often >10 s) idle gaps between background poll broadcasts.
+    uvicorn.run(
+        app, host=host, port=port, log_level="info",
+        ws="wsproto",
+        ws_ping_interval=10.0,
+        ws_ping_timeout=10.0,
+    )

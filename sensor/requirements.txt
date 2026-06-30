@@ -1,0 +1,12 @@
+# Pi-side requirements (sensor/ scripts).
+#
+# Install from inside the project venv on the Pi:
+#
+#   source .venv/bin/activate
+#   pip install -r sensor/requirements.txt
+
+# Direct I²C driver for the LSM9DS1 IMU on the Sense HAT.
+adafruit-circuitpython-lsm9ds1>=2.1
+
+# Provides the `board` / `busio` modules on Raspberry Pi.
+adafruit-blinka>=8.0

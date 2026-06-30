@@ -55,6 +55,21 @@ header h1 { margin: 0; font-size: 1.1rem; color: var(--accent); }
 .dot-bad { background: var(--bad); }
 .muted { color: var(--muted); }
 
+.alert-banner {
+  background: var(--bad);
+  color: #fff;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { background: var(--bad); }
+  50%      { background: #ff8a82; }
+}
+
 .stop {
   display: block;
   width: 100%;

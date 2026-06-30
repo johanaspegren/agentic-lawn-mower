@@ -1,0 +1,9 @@
+cd ~/dev
+git clone <your-repo-url> robo-lawn-mover     # or just push from your Mac and pull
+cd robo-lawn-mover
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r sensor/requirements.txt
+python sensor/accel_test.py
+
