@@ -193,3 +193,18 @@ time.** Both touch the I²C bus and would fight; the server already
 includes the logger's functionality. `sensor/camera_snap.py` runs as a
 separate process (it owns the camera; the server only serves the latest
 file it produced).
+
+## Fun: tilt-ball LED animation
+
+For when you want to confirm the IMU is alive without staring at a
+terminal — drives the 8×8 LED matrix as a tilt-ball with a fading trail
+and an impact flash when you bump the Pi.
+
+```bash
+sudo apt install -y python3-sense-hat   # only the LED matrix is used; no RTIMULib paths invoked
+python sensor/led_tilt.py
+```
+
+Tilt the Pi — a white dot rolls around. Tap or shake — the matrix
+flashes red. Ctrl-C clears the matrix and exits. Don't run this at the
+same time as `server.py` / `imu_logger.py` (shared I²C bus).
