@@ -94,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "MOWER_ALERT_WEBHOOK.")
     p.add_argument("--alert-threshold", type=float, default=180.0,
                    help="seconds in idle_off_dock before firing. Default: 180")
+    p.add_argument("--pi-url",
+                   help="base URL of the Pi sensor server (e.g. "
+                        "http://roboworm.local:8001). If set, the UI shows "
+                        "the camera + IMU panels. Falls back to env var "
+                        "MOWER_PI_URL.")
 
     p = sub.add_parser(
         "monitor",
@@ -189,6 +194,7 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(1)
         import os
         webhook = args.alert_webhook or os.environ.get("MOWER_ALERT_WEBHOOK")
+        pi_url = args.pi_url or os.environ.get("MOWER_PI_URL")
         run_web(
             args.ip,
             host=args.host,
@@ -199,6 +205,7 @@ def main(argv: list[str] | None = None) -> None:
             poll_state=args.state,
             alert_threshold_sec=args.alert_threshold,
             alert_webhook=webhook,
+            pi_url=pi_url,
         )
 
     elif args.cmd == "monitor":

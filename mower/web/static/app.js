@@ -22,7 +22,13 @@ const batteryV = $("battery-v");
 const batteryAge = $("battery-age");
 const stateLabel = $("state-label");
 const alertBanner = $("alert-banner");
+const mowerDot = $("device-mower-dot");
+const mowerStatus = $("device-mower-status");
+const piDot = $("device-pi-dot");
+const piStatus = $("device-pi-status");
 let lastStateTs = null;         // ISO string of last state-bearing sample
+let lastMowerOkTs = null;
+let lastMowerError = null;
 
 async function sendCmd(name) {
   flash(`> ${name}`);
@@ -112,11 +118,32 @@ function connectWS() {
   });
 }
 
+function setDotState(el, state) {
+  el.classList.remove("dot-good", "dot-bad");
+  if (state === "good") el.classList.add("dot-good");
+  if (state === "bad") el.classList.add("dot-bad");
+}
+
+function updateMowerChip(ok, text) {
+  setDotState(mowerDot, ok ? "good" : "bad");
+  mowerStatus.textContent = text;
+}
+
+function updatePiChip(state, text) {
+  setDotState(piDot, state);
+  piStatus.textContent = text;
+}
+
 function onSample(s) {
   if (s.codename === "ERROR") {
+    lastMowerError = s.fields?.error ?? "unknown error";
+    updateMowerChip(false, `offline (${lastMowerError})`);
     flash(`error: ${s.fields?.error ?? "?"}`, "err");
     return;
   }
+  lastMowerOkTs = s.ts || new Date().toISOString();
+  lastMowerError = null;
+  updateMowerChip(true, `online (last reply ${lastMowerOkTs})`);
   latestCodename.textContent = s.codename;
   latestHex.textContent = s.binary_hex ?? "(no binary)";
   lastTs.textContent = s.ts ?? "";
@@ -161,6 +188,137 @@ function formatAge(sec) {
 
 setInterval(refreshBatteryAge, 1000);
 
+// --- Pi-side panels (camera + IMU) ----------------------------------------
+// Only activated if /api/status returned a pi_url. Talks directly to the Pi
+// (CORS is open on that side). Phase 2 will add an MJPEG "live" option.
+
+let piUrl = null;
+let camTimerId = null;
+let camIntervalSec = 30;
+let imuTimerId = null;
+let camObjectUrl = null;
+let piCameraOk = false;
+let piImuOk = false;
+
+function updatePiChipFromSignals() {
+  if (!piUrl) {
+    updatePiChip("", "not configured (start with --pi-url)");
+    return;
+  }
+  if (piCameraOk || piImuOk) {
+    const details = [];
+    details.push(piCameraOk ? "camera ok" : "camera down");
+    details.push(piImuOk ? "imu ok" : "imu down");
+    updatePiChip("good", `reachable (${details.join(", ")})`);
+  } else {
+    updatePiChip("bad", "unreachable");
+  }
+}
+
+function setupPi(url) {
+  if (!url) {
+    updatePiChipFromSignals();
+    return;
+  }
+  piUrl = url.replace(/\/$/, "");
+
+  document.getElementById("pi-camera-section").hidden = false;
+  document.getElementById("pi-imu-section").hidden = false;
+
+  const sel = document.getElementById("cam-interval");
+  sel.addEventListener("change", () => {
+    camIntervalSec = parseInt(sel.value, 10);
+    restartCameraTimer();
+  });
+  $("cam-refresh").addEventListener("click", refreshCamera);
+
+  restartCameraTimer();
+  refreshCamera();
+
+  imuTimerId = setInterval(pollImu, 2000);
+  pollImu();
+}
+
+async function refreshCamera() {
+  if (!piUrl) return;
+  const img = $("cam-img");
+  const status = $("cam-status");
+  status.textContent = "loading...";
+  try {
+    // Fetch first so we can surface HTTP errors (404 = no snapshots yet).
+    const resp = await fetch(`${piUrl}/latest.jpg?t=${Date.now()}`, {
+      cache: "no-store",
+    });
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const blob = await resp.blob();
+    if (!blob.type.startsWith("image/")) {
+      throw new Error("not an image payload");
+    }
+    if (camObjectUrl) URL.revokeObjectURL(camObjectUrl);
+    camObjectUrl = URL.createObjectURL(blob);
+    img.src = camObjectUrl;
+    img.hidden = false;
+    status.textContent = `updated ${new Date().toLocaleTimeString()}`;
+    piCameraOk = true;
+  } catch (e) {
+    img.hidden = true;
+    img.removeAttribute("src");
+    status.textContent = `camera unavailable (${e.message || e})`;
+    piCameraOk = false;
+  }
+  updatePiChipFromSignals();
+}
+
+function restartCameraTimer() {
+  if (camTimerId) { clearInterval(camTimerId); camTimerId = null; }
+  if (camIntervalSec > 0) {
+    camTimerId = setInterval(refreshCamera, camIntervalSec * 1000);
+  }
+}
+
+async function pollImu() {
+  if (!piUrl) return;
+  const status = $("imu-status");
+  try {
+    const r = await fetch(`${piUrl}/api/imu/recent?seconds=60`);
+    if (!r.ok) throw new Error(r.statusText || r.status);
+    const samples = await r.json();
+    drawImuChart(samples);
+    piImuOk = true;
+    if (samples.length > 0) {
+      const last = samples[samples.length - 1];
+      const mag = Math.sqrt(last.ax * last.ax + last.ay * last.ay + last.az * last.az);
+      status.textContent =
+        `${samples.length} samples · |a| = ${mag.toFixed(2)} m/s²`;
+    } else {
+      status.textContent = "no samples yet";
+    }
+  } catch (e) {
+    piImuOk = false;
+    status.textContent = `unreachable: ${e.message || e}`;
+  }
+  updatePiChipFromSignals();
+}
+
+function drawImuChart(samples) {
+  const line = document.getElementById("imu-line");
+  if (samples.length < 2) {
+    line.setAttribute("points", "");
+    return;
+  }
+  const W = 300, H = 80;
+  const Y_MAX = 14;  // m/s²; gravity (~9.8) sits visibly mid-chart
+  const pts = samples.map((s, i) => {
+    const m = Math.sqrt(s.ax * s.ax + s.ay * s.ay + s.az * s.az);
+    const x = (i / (samples.length - 1)) * W;
+    const y = H - Math.min(1, m / Y_MAX) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  line.setAttribute("points", pts.join(" "));
+}
+
 function updateAlert(alert) {
   if (!alert) return;
   if (alert.alert_active) {
@@ -182,6 +340,14 @@ async function loadStatus() {
     const data = await r.json();
     ipLabel.textContent = data.ip ?? "";
     updateAlert(data.alert);
+    updateMowerChip(false, "waiting for first poll");
+    updatePiChipFromSignals();
+    setupPi(data.pi_url);
+    // Even if the WS pushes updates fine, poll /api/status as a fallback so
+    // the UI keeps refreshing if WS fails. Cheap, ~one request every 10 s.
+    if (!window._statusPoller) {
+      window._statusPoller = setInterval(refreshStatus, 10000);
+    }
     if (data.last_state && data.last_state_ts) {
       if (data.last_state.voltage_v !== undefined) {
         batteryV.textContent = `${data.last_state.voltage_v.toFixed(2)} V`;
@@ -195,6 +361,28 @@ async function loadStatus() {
     if (data.last_sample) onSample(data.last_sample);
   } catch (e) {
     flash(`! status: ${e}`, "err");
+    updateMowerChip(false, "status endpoint unreachable");
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch("/api/status");
+    const data = await r.json();
+    updateAlert(data.alert);
+    if (data.last_state?.voltage_v !== undefined && data.last_state_ts) {
+      batteryV.textContent = `${data.last_state.voltage_v.toFixed(2)} V`;
+      if (data.last_state.state !== undefined) {
+        stateLabel.textContent = data.last_state.state;
+      }
+      lastStateTs = data.last_state_ts;
+      refreshBatteryAge();
+    }
+    if (data.last_sample) {
+      onSample(data.last_sample);
+    }
+  } catch (e) {
+    // Silent; we'll retry on the next interval.
   }
 }
 

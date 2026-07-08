@@ -64,18 +64,53 @@
       </div>
     </section>
 
+    <section class="devices">
+      <h2>Available devices</h2>
+      <div class="chip-list">
+        <div class="chip-row">
+          <span class="dot dot-bad" id="device-mower-dot"></span>
+          <span class="chip-name">mower robot</span>
+          <span class="muted" id="device-mower-status">waiting for first poll</span>
+        </div>
+        <div class="chip-row">
+          <span class="dot" id="device-pi-dot"></span>
+          <span class="chip-name">roboworm (raspberry pi)</span>
+          <span class="muted" id="device-pi-status">not configured</span>
+        </div>
+      </div>
+    </section>
+
     <section class="feed">
       <h2>Live feed</h2>
       <pre id="feed" class="log"></pre>
     </section>
 
-    <section class="placeholder">
-      <h2>Coming soon</h2>
-      <ul class="muted">
-        <li>Voltage timeline chart (once we decode the byte)</li>
-        <li>IMU acceleration plot (when the Pi is in the mower)</li>
-        <li>Camera feed (when the Pi has one mounted)</li>
-      </ul>
+    <section id="pi-camera-section" class="pi-camera" hidden>
+      <h2>Camera</h2>
+      <div class="cam-controls">
+        <label for="cam-interval" class="muted">refresh</label>
+        <select id="cam-interval">
+          <option value="0">off</option>
+          <option value="3">3 s</option>
+          <option value="10">10 s</option>
+          <option value="30" selected>30 s</option>
+          <option value="60">1 min</option>
+        </select>
+        <button id="cam-refresh">refresh now</button>
+        <span id="cam-status" class="muted">—</span>
+      </div>
+      <img id="cam-img" alt="latest mower snapshot" hidden>
+    </section>
+
+    <section id="pi-imu-section" class="pi-imu" hidden>
+      <h2>IMU acceleration (last 60 s)</h2>
+      <svg id="imu-chart" viewBox="0 0 300 80" preserveAspectRatio="none">
+        <line x1="0" y1="28.6" x2="300" y2="28.6"
+              stroke="#3f5c8a" stroke-dasharray="3,3" stroke-width="0.5"/>
+        <polyline id="imu-line" fill="none" stroke="var(--accent)" stroke-width="1.2"
+                  vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div id="imu-status" class="muted imu-status">—</div>
     </section>
   </main>
 

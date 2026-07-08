@@ -10,6 +10,10 @@
 # The core protocol client + CLI + REPL has no third-party dependencies.
 # Everything below is for `python -m mower serve` (the FastAPI UI).
 
-fastapi>=0.110
+# Starlette 1.x added strict WebSocket Origin enforcement at the framework
+# level that uvicorn's ws="wsproto" no longer bypasses, so we pin both
+# Starlette and a compatible FastAPI range until we have a clean workaround.
+fastapi>=0.110,<0.139
+starlette<1.0
 uvicorn[standard]>=0.27
 wsproto>=1.2          # permissive WebSocket backend (uvicorn ws="wsproto")

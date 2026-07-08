@@ -260,7 +260,8 @@ def create_app(ip: str, port: int = 9600, *,
                poll_interval: float = 30.0,
                poll_state: bool = True,
                alert_threshold_sec: float = 180.0,
-               alert_webhook: str | None = None):
+               alert_webhook: str | None = None,
+               pi_url: str | None = None):
     """Build and return a configured FastAPI app."""
     from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.responses import FileResponse
@@ -315,6 +316,7 @@ def create_app(ip: str, port: int = 9600, *,
         from dataclasses import asdict
         return {
             "ip": ip,
+            "pi_url": pi_url,
             "last_sample": hub.last_sample,
             "last_state": hub.last_state,
             "last_state_ts": hub.last_state_ts,
@@ -384,13 +386,15 @@ def run(ip: str, *, host: str = "127.0.0.1", port: int = 8000,
         poll_interval: float = 30.0,
         poll_state: bool = True,
         alert_threshold_sec: float = 180.0,
-        alert_webhook: str | None = None) -> None:
+        alert_webhook: str | None = None,
+        pi_url: str | None = None) -> None:
     """Start the server. Convenience wrapper around uvicorn.run."""
     import uvicorn
     app = create_app(ip, port=mower_port, log_dir=log_dir,
                      poll_interval=poll_interval, poll_state=poll_state,
                      alert_threshold_sec=alert_threshold_sec,
-                     alert_webhook=alert_webhook)
+                     alert_webhook=alert_webhook,
+                     pi_url=pi_url)
     print(f"[serve] mower @ {ip}:{mower_port}", file=sys.stderr)
     print(f"[serve] UI at http://{host}:{port}", file=sys.stderr)
     if log_dir:

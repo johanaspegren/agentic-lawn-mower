@@ -5,6 +5,100 @@ lawn mower. The mower's app talks to it over the LAN on TCP :9600; this is a
 Python client that speaks the same protocol so we can control it from a
 computer.
 
+This repo has two parts:
+
+- `mower/` (Mac/Linux laptop): mower protocol client, CLI, REPL, and web UI
+- `sensor/` (Raspberry Pi "roboworm"): IMU + camera collection server
+
+## Start here (without the mower hardware)
+
+If the mower is unavailable, you can still verify your dev setup and the Pi side.
+
+### 1) Local dev setup on your Mac
+
+```bash
+cd ~/dev
+git clone <your-repo-url> robo-lawn-mover
+cd robo-lawn-mover
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+
+# Core package (CLI/API)
+pip install -e .
+
+# Optional: web UI dependencies for `python -m mower serve ...`
+pip install -r requirements.txt
+
+# Quick sanity checks
+python -m mower --help
+pytest -q
+```
+
+### 2) Check the Raspberry Pi (roboworm) over SSH
+
+```bash
+ssh <pi-user>@192.168.68.122
+hostname
+python3 --version
+cd ~/robo-lawn-mover
+```
+
+If the repo is not present on the Pi yet:
+
+```bash
+git clone <your-repo-url> ~/robo-lawn-mover
+cd ~/robo-lawn-mover
+```
+
+Prepare the Pi venv and deps:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r sensor/requirements.txt
+pip install -e .
+```
+
+Run Pi-side service checks (these work even if the mower itself is offline):
+
+```bash
+# Starts the sensor API on :8001
+python -m sensor.server
+```
+
+In a second SSH session on the Pi:
+
+```bash
+curl -s http://127.0.0.1:8001/ | python -m json.tool
+curl -i http://127.0.0.1:8001/api/imu
+```
+
+Expected: `/` returns service JSON. `/api/imu` may return 503 until the IMU
+loop has produced samples.
+
+### 3) Run the UI on your Mac (with Pi sensor panels)
+
+From your Mac, in the repo root:
+
+```bash
+source .venv/bin/activate
+
+# if needed in this venv
+pip install -e .
+pip install -r requirements.txt
+
+# Replace with your mower IP. The Pi URL points at roboworm's sensor.server.
+python -m mower serve --ip 192.168.68.108 --pi-url http://192.168.68.122:8001
+```
+
+Open <http://127.0.0.1:8000> in your browser.
+
+If the mower hardware is offline, the UI still starts; mower command/polling
+calls will fail while Pi camera/IMU panels can still load from `--pi-url`.
+
 ## Status
 
 Working end-to-end against the live mower:
@@ -15,9 +109,9 @@ Working end-to-end against the live mower:
 - Live one-shot commands: `initiate-remote`, `forward`, `reverse`, `left`,
   `right`, `auto`, `home`, `blade`, `stop`, `poll`
 - Synthesize new 0x69-family commands by param byte:
-  `python mower.py param <ip> 0x09`
+  `python -m mower param <ip> 0x09`
 - Interactive REPL with a STOP failsafe on every exit path:
-  `python mower.py repl <ip>`
+  `python -m mower repl <ip>`
 
 The 0x69 command family uses a single parameter byte plus a one-byte checksum
 (`checksum = (0x09 - param) & 0xFF`). Known params:
@@ -41,8 +135,10 @@ Not yet mapped: anything `0x09`+ (likely either unused or maintenance-only).
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt   # fastapi + uvicorn (only needed for the web UI)
-pip install -e .                  # editable install of the mower package
+pip install -e .
+
+# only needed for the web UI (`python -m mower serve ...`)
+pip install -r requirements.txt
 ```
 
 The core protocol client and CLI work without `requirements.txt` — the third-party
@@ -77,7 +173,7 @@ python -m mower repl 192.168.68.108
 python -m mower param 192.168.68.108 0x0a
 
 # Replay any captured PCAPDroid hex dump
-python -m mower replay 192.168.68.108 "logs from phone/old/PCAPdroid_28_Jun_19_35.txt"
+python -m mower replay 192.168.68.108 "logs from phone/old/PCAPdroid_28_Jun_20_19_35.txt"
 
 # Decode a raw hex blob
 python -m mower decode "30 68 00 50 ..."
@@ -203,4 +299,4 @@ Its inner format is not yet decoded — opaque bytes for now.
 ## Files
 
 - [mower/](mower/) — Python package (library + CLI + REPL)
-- [logs from phone/](logs%20from%20phone/) — PCAPDroid captures from the phone app
+- [logs from phone/](<logs%20from%20phone/>) — PCAPDroid captures from the phone app

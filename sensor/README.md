@@ -4,6 +4,52 @@ Code that runs on the Pi inside the mower. Currently just an
 accelerometer-prototype script; will grow into the IMU/environment/camera
 data collector.
 
+## Quick start on roboworm (no mower required)
+
+If you only want to verify that the Raspberry Pi side is healthy right now,
+use this shorter path first.
+
+```bash
+ssh <pi-user>@192.168.68.122
+hostname
+python3 --version
+```
+
+From the Pi shell:
+
+```bash
+cd ~/robo-lawn-mover || git clone <your-repo-url> ~/robo-lawn-mover
+cd ~/robo-lawn-mover
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r sensor/requirements.txt
+pip install -e .
+```
+
+Start the Pi-side API server:
+
+```bash
+python -m sensor.server
+```
+
+In a second SSH session:
+
+```bash
+curl -s http://127.0.0.1:8001/ | python -m json.tool
+curl -i http://127.0.0.1:8001/api/imu
+```
+
+Expected:
+
+- `/` returns JSON describing the service and endpoints.
+- `/api/imu` can be `503 no samples yet` until IMU reads start.
+- `latest.jpg` is `404` until `sensor/camera_snap.py` has produced snapshots.
+
+If this works, the roboworm software stack is up and network-reachable.
+You can add Sense HAT / camera validation later when hardware is available.
+
 ## One-time Pi setup
 
 Tested on Raspberry Pi 4B with the Sense HAT attached.
