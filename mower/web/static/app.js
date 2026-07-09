@@ -269,11 +269,14 @@ function setVideoStatus(text) {
   $("video-status").textContent = text;
 }
 
-function setVideoVisible(on) {
+function setVideoVisible(on, opts = {}) {
+  const { refresh = false } = opts;
   const img = $("video-img");
   if (on) {
-    // Always assign a fresh URL for each session to avoid stale stream state.
-    img.src = `${piUrl}/live.mjpg?t=${Date.now()}`;
+    if (refresh || !img.src) {
+      // Assign a fresh URL when a new session starts.
+      img.src = `${piUrl}/live.mjpg?t=${Date.now()}`;
+    }
     img.hidden = false;
   } else {
     img.hidden = true;
@@ -306,7 +309,7 @@ async function startVideo() {
       throw new Error(data.last_error || `HTTP ${r.status}`);
     }
     piVideoRunning = !!data.running;
-    setVideoVisible(piVideoRunning);
+    setVideoVisible(piVideoRunning, { refresh: true });
     if (piVideoRunning) {
       const remain = data.seconds_remaining;
       const ttl = remain == null ? "until stop" : `${Math.ceil(remain)}s left`;
@@ -340,6 +343,7 @@ async function refreshVideoStatus() {
     const r = await fetch(`${piUrl}/api/camera/live/status`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const s = await r.json();
+    const wasRunning = piVideoRunning;
     piVideoRunning = !!s.running;
     if (s.last_error && !s.running) {
       setVideoStatus(`error: ${s.last_error}`);
@@ -350,7 +354,8 @@ async function refreshVideoStatus() {
       const remain = s.seconds_remaining;
       const ttl = remain == null ? "until stop" : `${Math.ceil(remain)}s left`;
       setVideoStatus(`running (${ttl})`);
-      setVideoVisible(true);
+      // Refresh src only when transitioning into running.
+      setVideoVisible(true, { refresh: !wasRunning });
     } else {
       setVideoStatus("idle");
       setVideoVisible(false);
