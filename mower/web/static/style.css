@@ -211,6 +211,9 @@ input[type="datetime-local"] {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
+.pi-camera img[hidden] {
+  display: none;
+}
 .pi-camera img + img {
   margin-top: 0.6rem;
 }
