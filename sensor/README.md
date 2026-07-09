@@ -208,6 +208,10 @@ Writes one JPEG per minute to `snapshots/YYYY-MM-DD/snap_HH-MM-SS.jpg` and
 maintains `snapshots/latest.jpg` as a symlink to the most recent frame.
 ~1.6 GB at 14-day retention.
 
+Important: for a live camera in the mower UI, keep this process running.
+`sensor.server` does not capture images; it only serves `latest.jpg` that
+`camera_snap.py` writes.
+
 ## Run the Pi-side server
 
 Combined service: reads IMU at 25 Hz, logs to CSV (same format as
@@ -225,6 +229,26 @@ fetch:
 ```bash
 python -m sensor.server
 ```
+
+For live camera updates, run `camera_snap.py` and `sensor.server` at the same
+time (separate terminals/processes).
+
+## Optional: on-demand live video stream (from UI)
+
+`sensor.server` now also supports a temporary MJPEG live feed that the UI can
+start/stop on demand.
+
+- `POST /api/camera/live/start?seconds=120` starts capture
+- `POST /api/camera/live/stop` stops capture
+- `GET /api/camera/live/status` returns running/error/ttl status
+- `GET /live.mjpg` serves MJPEG frames while running
+
+The mower UI exposes these controls in the Camera panel (`start video` /
+`stop video`).
+
+Important: this live mode owns the camera directly via `rpicam-vid`. Do not
+run `camera_snap.py` at the same time as a live video session; only one process
+can own the camera device.
 
 Listens on `0.0.0.0:8001`. From the Mac browser:
 <http://roboworm.local:8001/> for the status page,

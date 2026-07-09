@@ -69,6 +69,14 @@ Run Pi-side service checks (these work even if the mower itself is offline):
 python -m sensor.server
 ```
 
+Important for camera in the UI: `sensor.server` only serves
+`/latest.jpg`; it does not capture new frames. To keep the camera image
+updating, also run the snapshot producer on the Pi in a second terminal:
+
+```bash
+python sensor/camera_snap.py --dir ./snapshots --interval 30
+```
+
 In a second SSH session on the Pi:
 
 ```bash
@@ -98,6 +106,9 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 
 If the mower hardware is offline, the UI still starts; mower command/polling
 calls will fail while Pi camera/IMU panels can still load from `--pi-url`.
+
+Optional: in the Camera panel you can now start/stop an on-demand live video
+session. This uses the Pi camera directly while active.
 
 ## Status
 

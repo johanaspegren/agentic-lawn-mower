@@ -99,7 +99,21 @@
         <button id="cam-refresh">refresh now</button>
         <span id="cam-status" class="muted">—</span>
       </div>
+      <div class="cam-controls">
+        <label for="video-seconds" class="muted">video</label>
+        <select id="video-seconds">
+          <option value="30">30 s</option>
+          <option value="60">1 min</option>
+          <option value="120" selected>2 min</option>
+          <option value="300">5 min</option>
+          <option value="0">until stop</option>
+        </select>
+        <button id="video-start">start video</button>
+        <button id="video-stop">stop video</button>
+        <span id="video-status" class="muted">idle</span>
+      </div>
       <img id="cam-img" alt="latest mower snapshot" hidden>
+      <img id="video-img" alt="live video feed" hidden>
     </section>
 
     <section id="pi-imu-section" class="pi-imu" hidden>

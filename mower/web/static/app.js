@@ -196,9 +196,11 @@ let piUrl = null;
 let camTimerId = null;
 let camIntervalSec = 30;
 let imuTimerId = null;
+let videoStatusTimerId = null;
 let camObjectUrl = null;
 let piCameraOk = false;
 let piImuOk = false;
+let piVideoRunning = false;
 
 function updatePiChipFromSignals() {
   if (!piUrl) {
@@ -231,12 +233,104 @@ function setupPi(url) {
     restartCameraTimer();
   });
   $("cam-refresh").addEventListener("click", refreshCamera);
+    $("video-start").addEventListener("click", startVideo);
+    $("video-stop").addEventListener("click", stopVideo);
 
   restartCameraTimer();
   refreshCamera();
+    refreshVideoStatus();
+    if (!videoStatusTimerId) {
+      videoStatusTimerId = setInterval(refreshVideoStatus, 3000);
+    }
 
   imuTimerId = setInterval(pollImu, 2000);
   pollImu();
+}
+
+function setVideoStatus(text) {
+  $("video-status").textContent = text;
+}
+
+function setVideoVisible(on) {
+  const img = $("video-img");
+  if (on) {
+    if (!img.src) {
+      img.src = `${piUrl}/live.mjpg?t=${Date.now()}`;
+    }
+    img.hidden = false;
+  } else {
+    img.hidden = true;
+    img.removeAttribute("src");
+  }
+}
+
+async function startVideo() {
+  if (!piUrl) return;
+  const seconds = parseInt($("video-seconds").value, 10);
+  setVideoStatus("starting...");
+  try {
+    const r = await fetch(
+      `${piUrl}/api/camera/live/start?seconds=${seconds}`,
+      { method: "POST" },
+    );
+    const data = await r.json();
+    if (!r.ok || data.last_error) {
+      throw new Error(data.last_error || `HTTP ${r.status}`);
+    }
+    piVideoRunning = !!data.running;
+    setVideoVisible(piVideoRunning);
+    if (piVideoRunning) {
+      const remain = data.seconds_remaining;
+      const ttl = remain == null ? "until stop" : `${Math.ceil(remain)}s left`;
+      setVideoStatus(`running (${ttl})`);
+    } else {
+      setVideoStatus("not running");
+    }
+  } catch (e) {
+    piVideoRunning = false;
+    setVideoVisible(false);
+    setVideoStatus(`start failed: ${e.message || e}`);
+  }
+}
+
+async function stopVideo() {
+  if (!piUrl) return;
+  setVideoStatus("stopping...");
+  try {
+    await fetch(`${piUrl}/api/camera/live/stop`, { method: "POST" });
+  } catch (e) {
+    // Even on network error we force-hide locally so UI doesn't look stuck.
+  }
+  piVideoRunning = false;
+  setVideoVisible(false);
+  setVideoStatus("stopped");
+}
+
+async function refreshVideoStatus() {
+  if (!piUrl) return;
+  try {
+    const r = await fetch(`${piUrl}/api/camera/live/status`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const s = await r.json();
+    piVideoRunning = !!s.running;
+    if (s.last_error && !s.running) {
+      setVideoStatus(`error: ${s.last_error}`);
+      setVideoVisible(false);
+      return;
+    }
+    if (s.running) {
+      const remain = s.seconds_remaining;
+      const ttl = remain == null ? "until stop" : `${Math.ceil(remain)}s left`;
+      setVideoStatus(`running (${ttl})`);
+      setVideoVisible(true);
+    } else {
+      setVideoStatus("idle");
+      setVideoVisible(false);
+    }
+  } catch (e) {
+    setVideoStatus(`unreachable: ${e.message || e}`);
+    setVideoVisible(false);
+  }
 }
 
 async function refreshCamera() {
