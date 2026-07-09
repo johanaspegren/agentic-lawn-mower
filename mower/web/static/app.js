@@ -233,15 +233,15 @@ function setupPi(url) {
     restartCameraTimer();
   });
   $("cam-refresh").addEventListener("click", refreshCamera);
-    $("video-start").addEventListener("click", startVideo);
-    $("video-stop").addEventListener("click", stopVideo);
+  $("video-start").addEventListener("click", startVideo);
+  $("video-stop").addEventListener("click", stopVideo);
 
   restartCameraTimer();
   refreshCamera();
-    refreshVideoStatus();
-    if (!videoStatusTimerId) {
-      videoStatusTimerId = setInterval(refreshVideoStatus, 3000);
-    }
+  refreshVideoStatus();
+  if (!videoStatusTimerId) {
+    videoStatusTimerId = setInterval(refreshVideoStatus, 3000);
+  }
 
   imuTimerId = setInterval(pollImu, 2000);
   pollImu();
@@ -267,10 +267,21 @@ function setVideoVisible(on) {
 async function startVideo() {
   if (!piUrl) return;
   const seconds = parseInt($("video-seconds").value, 10);
+  const size = $("video-size").value || "960x540";
+  const [widthStr, heightStr] = size.split("x");
+  const width = parseInt(widthStr, 10);
+  const height = parseInt(heightStr, 10);
+  const fps = parseFloat($("video-fps").value || "8");
+  const params = new URLSearchParams({
+    seconds: String(seconds),
+    width: String(width),
+    height: String(height),
+    fps: String(fps),
+  });
   setVideoStatus("starting...");
   try {
     const r = await fetch(
-      `${piUrl}/api/camera/live/start?seconds=${seconds}`,
+      `${piUrl}/api/camera/live/start?${params.toString()}`,
       { method: "POST" },
     );
     const data = await r.json();

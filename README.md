@@ -108,7 +108,8 @@ If the mower hardware is offline, the UI still starts; mower command/polling
 calls will fail while Pi camera/IMU panels can still load from `--pi-url`.
 
 Optional: in the Camera panel you can now start/stop an on-demand live video
-session. This uses the Pi camera directly while active.
+session. This uses the Pi camera directly while active. The UI also lets you
+pick live-video duration, resolution, and FPS before starting.
 
 ## Status
 

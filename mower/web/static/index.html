@@ -108,6 +108,19 @@
           <option value="300">5 min</option>
           <option value="0">until stop</option>
         </select>
+        <label for="video-size" class="muted">size</label>
+        <select id="video-size">
+          <option value="960x540" selected>960x540</option>
+          <option value="1280x720">1280x720</option>
+          <option value="1640x1232">1640x1232</option>
+        </select>
+        <label for="video-fps" class="muted">fps</label>
+        <select id="video-fps">
+          <option value="8" selected>8</option>
+          <option value="12">12</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+        </select>
         <button id="video-start">start video</button>
         <button id="video-stop">stop video</button>
         <span id="video-status" class="muted">idle</span>
