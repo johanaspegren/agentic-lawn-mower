@@ -73,6 +73,8 @@ def main() -> None:
     print(f"[snap] {args.width}x{args.height} -> {root}/<day>/snap_*.jpg "
           f"every {args.interval:g} s (retain {args.retention_days} d). "
           f"Ctrl-C to stop.", file=sys.stderr)
+    print(f"[snap] snapshot root: {root}", file=sys.stderr)
+    print(f"[snap] latest symlink: {latest}", file=sys.stderr)
 
     try:
         while stop["go"]:
@@ -98,7 +100,13 @@ def main() -> None:
                 except OSError as e:
                     print(f"[snap] couldn't update latest.jpg: {e}",
                           file=sys.stderr)
-                print(f"[snap] {path.relative_to(root.parent)}", file=sys.stderr)
+                latest_target = "(missing)"
+                try:
+                    latest_target = str(latest.resolve(strict=True))
+                except OSError:
+                    pass
+                print(f"[snap] wrote {path} | latest.jpg -> {latest_target}",
+                      file=sys.stderr)
 
             # Retention pruning — once per snapshot is fine, ~one rmtree/day at most
             cutoff_date = (now - timedelta(days=args.retention_days)).date()

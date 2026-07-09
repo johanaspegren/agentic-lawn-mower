@@ -187,12 +187,15 @@ def create_app():
     async def latest_jpg():
         path = SNAPSHOTS_DIR / "latest.jpg"
         if not path.exists():
+            print(f"[server] latest.jpg missing at {path}", file=sys.stderr)
             return JSONResponse(
                 {"error": "no snapshots yet", "snapshots_dir": str(SNAPSHOTS_DIR)},
                 status_code=404,
             )
         # Use resolve() so symlinks (latest.jpg -> day-dir/snap_*.jpg) work.
-        return FileResponse(path.resolve(), media_type="image/jpeg")
+        resolved = path.resolve()
+        print(f"[server] serving latest.jpg from {resolved}", file=sys.stderr)
+        return FileResponse(resolved, media_type="image/jpeg")
 
     @app.get("/api/imu")
     async def imu_latest():
@@ -230,6 +233,7 @@ def main() -> None:
     import uvicorn
     host = os.environ.get("MOWER_SENSOR_HOST", "0.0.0.0")
     port = int(os.environ.get("MOWER_SENSOR_PORT", "8001"))
+    print(f"[server] snapshots_dir={SNAPSHOTS_DIR}", file=sys.stderr)
     uvicorn.run(app, host=host, port=port, log_level="info", ws="wsproto")
 
 

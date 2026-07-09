@@ -94,7 +94,7 @@ pip install -r requirements.txt
 python -m mower serve --ip 192.168.68.108 --pi-url http://192.168.68.122:8001
 ```
 
-Open <http://127.0.0.1:8000> in your browser.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 
 If the mower hardware is offline, the UI still starts; mower command/polling
 calls will fail while Pi camera/IMU panels can still load from `--pi-url`.
