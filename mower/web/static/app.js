@@ -236,6 +236,24 @@ function setupPi(url) {
   $("video-start").addEventListener("click", startVideo);
   $("video-stop").addEventListener("click", stopVideo);
 
+  const videoImg = $("video-img");
+  videoImg.onload = () => {
+    // MJPEG <img> fires load when first frame arrives.
+    if (piVideoRunning) {
+      setVideoStatus("streaming");
+    }
+  };
+  videoImg.onerror = () => {
+    // Common when stream endpoint returns 409 (not running) or stream ends.
+    videoImg.hidden = true;
+    videoImg.removeAttribute("src");
+    if (piVideoRunning) {
+      setVideoStatus("stream interrupted (start again)");
+    } else {
+      setVideoStatus("idle");
+    }
+  };
+
   restartCameraTimer();
   refreshCamera();
   refreshVideoStatus();
@@ -254,9 +272,8 @@ function setVideoStatus(text) {
 function setVideoVisible(on) {
   const img = $("video-img");
   if (on) {
-    if (!img.src) {
-      img.src = `${piUrl}/live.mjpg?t=${Date.now()}`;
-    }
+    // Always assign a fresh URL for each session to avoid stale stream state.
+    img.src = `${piUrl}/live.mjpg?t=${Date.now()}`;
     img.hidden = false;
   } else {
     img.hidden = true;
