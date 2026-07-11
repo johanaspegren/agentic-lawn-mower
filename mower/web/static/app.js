@@ -311,9 +311,7 @@ async function startVideo() {
     piVideoRunning = !!data.running;
     setVideoVisible(piVideoRunning, { refresh: true });
     if (piVideoRunning) {
-      const remain = data.seconds_remaining;
-      const ttl = remain == null ? "until stop" : `${Math.ceil(remain)}s left`;
-      setVideoStatus(`running (${ttl})`);
+      setVideoStatus(runningStatusText(data));
     } else {
       setVideoStatus("not running");
     }
@@ -337,6 +335,13 @@ async function stopVideo() {
   setVideoStatus("stopped");
 }
 
+function runningStatusText(s) {
+  const remain = s.seconds_remaining;
+  const ttl = remain == null ? "until stop" : `${Math.ceil(remain)}s left`;
+  const pausedNote = s.snapshot_paused ? " · snapshots paused" : "";
+  return `running (${ttl})${pausedNote}`;
+}
+
 async function refreshVideoStatus() {
   if (!piUrl) return;
   try {
@@ -351,9 +356,7 @@ async function refreshVideoStatus() {
       return;
     }
     if (s.running) {
-      const remain = s.seconds_remaining;
-      const ttl = remain == null ? "until stop" : `${Math.ceil(remain)}s left`;
-      setVideoStatus(`running (${ttl})`);
+      setVideoStatus(runningStatusText(s));
       // Refresh src only when transitioning into running.
       setVideoVisible(true, { refresh: !wasRunning });
     } else {

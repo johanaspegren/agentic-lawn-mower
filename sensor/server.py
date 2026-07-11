@@ -54,6 +54,12 @@ LIVE_VIDEO_FPS_DEFAULT = float(os.environ.get("MOWER_LIVE_VIDEO_FPS", "8"))
 LIVE_VIDEO_WIDTH_DEFAULT = int(os.environ.get("MOWER_LIVE_VIDEO_WIDTH", "960"))
 LIVE_VIDEO_HEIGHT_DEFAULT = int(os.environ.get("MOWER_LIVE_VIDEO_HEIGHT", "540"))
 
+# systemd unit that owns the camera for periodic snapshots (see
+# sensor/systemd/). Live video pauses it for the session (only one process
+# can hold the camera at a time) and resumes it when the session ends.
+CAMERA_SNAP_SERVICE = os.environ.get("MOWER_CAMERA_SNAP_SERVICE",
+                                      "roboworm-camera-snap.service")
+
 # Sense HAT LSM9DS1 I²C addresses
 SENSEHAT_AG_ADDR = 0x6A
 SENSEHAT_MAG_ADDR = 0x1C
@@ -94,6 +100,50 @@ class LiveVideo:
         self._fps = LIVE_VIDEO_FPS_DEFAULT
         self._width = LIVE_VIDEO_WIDTH_DEFAULT
         self._height = LIVE_VIDEO_HEIGHT_DEFAULT
+        self._snapshot_paused = False
+
+    async def _pause_snapshot_service(self) -> None:
+        """Best-effort: stop the camera-snap systemd unit so it releases the
+        camera. No-op if it's already paused or if sudo/systemctl isn't set
+        up (see sensor/systemd/README.md) — we still try to start the video
+        either way and let rpicam-vid's own error surface if the camera is
+        genuinely busy."""
+        if self._snapshot_paused:
+            return
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "sudo", "systemctl", "stop", CAMERA_SNAP_SERVICE,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+        except FileNotFoundError:
+            print("[server][video] sudo/systemctl not found; "
+                  "not pausing the snapshotter", file=sys.stderr)
+            return
+        if proc.returncode == 0:
+            self._snapshot_paused = True
+            print(f"[server][video] paused {CAMERA_SNAP_SERVICE}", file=sys.stderr)
+        else:
+            print(f"[server][video] couldn't pause {CAMERA_SNAP_SERVICE}: "
+                  f"{stderr.decode(errors='replace').strip()}", file=sys.stderr)
+
+    async def _resume_snapshot_service(self) -> None:
+        if not self._snapshot_paused:
+            return
+        self._snapshot_paused = False
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "sudo", "systemctl", "start", CAMERA_SNAP_SERVICE,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+        except FileNotFoundError:
+            return
+        if proc.returncode != 0:
+            print(f"[server][video] couldn't resume {CAMERA_SNAP_SERVICE}: "
+                  f"{stderr.decode(errors='replace').strip()}", file=sys.stderr)
+        else:
+            print(f"[server][video] resumed {CAMERA_SNAP_SERVICE}", file=sys.stderr)
 
     async def start(self, *, seconds: float, fps: float,
                     width: int, height: int) -> dict[str, Any]:
@@ -108,6 +158,8 @@ class LiveVideo:
             if self._proc is not None and self._proc.returncode is None:
                 print("[server][video] already running", file=sys.stderr)
                 return self.status()
+
+            await self._pause_snapshot_service()
 
             cmd = [
                 "rpicam-vid",
@@ -130,6 +182,7 @@ class LiveVideo:
                 self._active = False
                 self._last_error = "rpicam-vid not found on this system"
                 print(f"[server][video] {self._last_error}", file=sys.stderr)
+                await self._resume_snapshot_service()
                 return self.status()
 
             self._started_at = datetime.now().isoformat(timespec="seconds")
@@ -153,6 +206,7 @@ class LiveVideo:
             except asyncio.TimeoutError:
                 proc.kill()
                 await proc.wait()
+        await self._resume_snapshot_service()
         return self.status()
 
     def status(self) -> dict[str, Any]:
@@ -171,6 +225,7 @@ class LiveVideo:
             "width": self._width,
             "height": self._height,
             "last_error": self._last_error,
+            "snapshot_paused": self._snapshot_paused,
         }
 
     def latest_frame(self) -> tuple[int, bytes | None]:
@@ -191,9 +246,9 @@ class LiveVideo:
                 await self.stop(reason="timeout")
                 return
             if self._proc is not None and self._proc.returncode is not None:
-                self._active = False
                 if self._proc.returncode != 0 and self._last_error is None:
                     self._last_error = f"rpicam-vid exited ({self._proc.returncode})"
+                await self.stop(reason="crashed")
                 return
 
     async def _read_stdout(self) -> None:

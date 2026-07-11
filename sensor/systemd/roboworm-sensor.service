@@ -1,0 +1,26 @@
+# Pi-side sensor API (sensor/server.py) — IMU loop, camera endpoints,
+# on-demand live video. Runs alongside roboworm-camera-snap.service; the two
+# coordinate over the camera automatically (see that unit's comments).
+#
+# Install: see sensor/README.md "Run at boot (systemd)".
+#
+# Uncomment/add Environment= lines to override the defaults documented in
+# sensor/server.py (MOWER_IMU_HZ, MOWER_SENSOR_PORT, MOWER_SNAPSHOTS_DIR,
+# MOWER_CAMERA_SNAP_SERVICE, etc.).
+
+[Unit]
+Description=Roboworm sensor API (IMU + camera + on-demand live video)
+After=network.target
+
+[Service]
+Type=simple
+User=johan
+WorkingDirectory=/home/johan/dev/agentic-lawn-mower/mower
+ExecStart=/home/johan/dev/agentic-lawn-mower/mower/.venv/bin/python -m sensor.server
+Restart=on-failure
+RestartSec=5
+# Environment=MOWER_SENSOR_PORT=8001
+# Environment=MOWER_IMU_HZ=25
+
+[Install]
+WantedBy=multi-user.target

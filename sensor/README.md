@@ -246,9 +246,13 @@ start/stop on demand.
 The mower UI exposes these controls in the Camera panel (`start video` /
 `stop video`).
 
-Important: this live mode owns the camera directly via `rpicam-vid`. Do not
-run `camera_snap.py` at the same time as a live video session; only one process
-can own the camera device.
+Important: this live mode owns the camera directly via `rpicam-vid`, and only
+one process can own the camera device at a time. If you're running
+`camera_snap.py` by hand (not as the `roboworm-camera-snap` systemd unit —
+see below), stop it yourself before starting a live session. If it *is*
+running as the systemd unit, `sensor.server` will pause it automatically for
+the duration of the session (best-effort — needs the sudoers rule from "Run
+at boot" below) and resume it when the session ends or times out.
 
 Listens on `0.0.0.0:8001`. From the Mac browser:
 <http://roboworm.local:8001/> for the status page,
@@ -256,13 +260,62 @@ Listens on `0.0.0.0:8001`. From the Mac browser:
 
 Configurable via env vars: `MOWER_IMU_HZ`, `MOWER_SENSOR_PORT`,
 `MOWER_SENSOR_LOG_DIR`, `MOWER_SNAPSHOTS_DIR`,
-`MOWER_SENSOR_RETENTION_DAYS`.
+`MOWER_SENSOR_RETENTION_DAYS`, `MOWER_CAMERA_SNAP_SERVICE` (the systemd unit
+name `sensor.server` pauses/resumes around live video; default
+`roboworm-camera-snap.service`).
 
 **Don't run `sensor/server.py` and `sensor/imu_logger.py` at the same
 time.** Both touch the I²C bus and would fight; the server already
 includes the logger's functionality. `sensor/camera_snap.py` runs as a
 separate process (it owns the camera; the server only serves the latest
 file it produced).
+
+## Run at boot (systemd)
+
+Unit files for both long-running Pi processes live in `sensor/systemd/`:
+
+- `roboworm-camera-snap.service` — periodic snapshotter (`camera_snap.py`)
+- `roboworm-sensor.service` — the sensor API (`sensor.server`)
+
+They're set up to run continuously and coordinate over the camera: when the
+UI starts a live-video session, `sensor.server` stops the snapshot unit for
+the duration and starts it again afterward (or on timeout/crash), so you get
+standing snapshots most of the time and can still pull up live video on
+demand.
+
+Install (unit files are pre-filled for the `johan` user at
+`/home/johan/dev/agentic-lawn-mower/mower` — adjust if that ever changes):
+
+```bash
+sudo cp sensor/systemd/roboworm-camera-snap.service /etc/systemd/system/
+sudo cp sensor/systemd/roboworm-sensor.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now roboworm-camera-snap.service
+sudo systemctl enable --now roboworm-sensor.service
+```
+
+For `sensor.server` to be able to pause/resume the snapshotter, it needs
+passwordless permission to run exactly two `systemctl` commands (nothing
+broader). Install the scoped sudoers rule:
+
+```bash
+sudo cp sensor/systemd/roboworm-camera-control.sudoers \
+    /etc/sudoers.d/roboworm-camera-control
+sudo chmod 0440 /etc/sudoers.d/roboworm-camera-control
+sudo visudo -c   # validates syntax before it takes effect
+```
+
+Without that rule, live video still works — `sensor.server` just logs that
+it couldn't pause the snapshotter and lets `rpicam-vid` fail on its own if
+the camera is actually busy.
+
+Useful commands once installed:
+
+```bash
+sudo systemctl status roboworm-sensor.service roboworm-camera-snap.service
+journalctl -u roboworm-sensor.service -f       # tail logs
+sudo systemctl restart roboworm-sensor.service
+```
 
 ## Fun: tilt-ball LED animation
 

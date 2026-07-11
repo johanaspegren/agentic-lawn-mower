@@ -1,0 +1,14 @@
+# Grants the johan user passwordless permission to start/stop *only* the
+# camera-snap unit — nothing else — so sensor.server (running as the same
+# unprivileged user) can pause/resume it around live-video sessions without
+# needing broad sudo access.
+#
+# Install with visudo (validates syntax before it takes effect — a bad
+# sudoers file can lock out sudo entirely):
+#
+#   sudo cp sensor/systemd/roboworm-camera-control.sudoers \
+#       /etc/sudoers.d/roboworm-camera-control
+#   sudo chmod 0440 /etc/sudoers.d/roboworm-camera-control
+#   sudo visudo -c
+
+johan ALL=(root) NOPASSWD: /usr/bin/systemctl stop roboworm-camera-snap.service, /usr/bin/systemctl start roboworm-camera-snap.service

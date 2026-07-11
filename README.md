@@ -77,6 +77,9 @@ updating, also run the snapshot producer on the Pi in a second terminal:
 python sensor/camera_snap.py --dir ./snapshots --interval 30
 ```
 
+For running both processes automatically on boot (systemd units + camera
+handoff around live video), see [sensor/README.md](sensor/README.md#run-at-boot-systemd).
+
 In a second SSH session on the Pi:
 
 ```bash
@@ -110,6 +113,11 @@ calls will fail while Pi camera/IMU panels can still load from `--pi-url`.
 Optional: in the Camera panel you can now start/stop an on-demand live video
 session. This uses the Pi camera directly while active. The UI also lets you
 pick live-video duration, resolution, and FPS before starting.
+
+If you edit `mower/web/static/*` and don't see the change, hard-refresh the
+browser (or disable cache in devtools) before assuming something's broken —
+`StaticFiles` serves the files fresh on every request, but the browser will
+happily keep using its own cached copy of `style.css`/`app.js` otherwise.
 
 ## Status
 

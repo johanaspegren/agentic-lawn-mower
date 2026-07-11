@@ -1,0 +1,23 @@
+# Periodic camera snapshotter (sensor/camera_snap.py) — one JPEG every
+# --interval seconds, so /latest.jpg always has something recent to serve.
+#
+# Gets paused automatically by sensor.server while an on-demand live video
+# session is active (they can't both own the camera), and resumed when the
+# session ends — see sensor/server.py's LiveVideo._pause/_resume_snapshot_service.
+#
+# Install: see sensor/README.md "Run at boot (systemd)".
+
+[Unit]
+Description=Roboworm periodic camera snapshotter
+After=multi-user.target
+
+[Service]
+Type=simple
+User=johan
+WorkingDirectory=/home/johan/dev/agentic-lawn-mower/mower
+ExecStart=/home/johan/dev/agentic-lawn-mower/mower/.venv/bin/python sensor/camera_snap.py --dir /home/johan/dev/agentic-lawn-mower/mower/snapshots --interval 60
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
