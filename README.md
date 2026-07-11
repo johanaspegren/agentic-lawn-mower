@@ -39,7 +39,7 @@ pytest -q
 ### 2) Check the Raspberry Pi (roboworm) over SSH
 
 ```bash
-ssh <pi-user>@192.168.68.122
+ssh johan@192.168.68.103
 hostname
 python3 --version
 cd ~/robo-lawn-mover
@@ -76,9 +76,6 @@ updating, also run the snapshot producer on the Pi in a second terminal:
 ```bash
 python sensor/camera_snap.py --dir ./snapshots --interval 30
 ```
-
-For running both processes automatically on boot (systemd units + camera
-handoff around live video), see [sensor/README.md](sensor/README.md#run-at-boot-systemd).
 
 In a second SSH session on the Pi:
 
